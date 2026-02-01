@@ -1,7 +1,36 @@
+# Environment
 .env
+
+# Virtual environments
+.venv
+venv
+env
+uv.lock
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+
+# Project specific
 media
 content
 video-output.json
-.venv
-venv
-__pycache__
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

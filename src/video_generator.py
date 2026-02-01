@@ -3,11 +3,12 @@ import json
 import uuid
 import threading
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 import openai
 import anthropic
 from animations import generate_script_json
-from manim_generator import generate_manim_code
+from manim_generator import generate_manim_code, fix_manim_code
 from concat_video import compile_video, concatenate_videos, sanitize_filename, merge_video_and_audio
 from tts_generator import generate_complete_audio
 
@@ -21,7 +22,7 @@ def setup_llm_client(provider_preference='auto'):
     
     openai_api_key = os.getenv('OPENAI_API_KEY')
     claude_api_key = os.getenv('CLAUDE_API_KEY')
-    openai_model = os.getenv("OPENAI_MODEL", "gpt-4")
+    openai_model = os.getenv("OPENAI_MODEL", "gpt-5-nano")
     claude_model = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
     
     # If specific provider requested
@@ -88,10 +89,12 @@ def generate_video_workflow(job_id, topic, enable_tts, llm_provider):
     """Background worker for video generation"""
     
     try:
-        # Create necessary directories
-        content_dir = "content"
+        # Create necessary directories (at project root level)
+        project_root = Path(__file__).parent.parent
+        content_dir = project_root / "content"
+        media_dir = project_root / "media"
         os.makedirs(content_dir, exist_ok=True)
-        os.makedirs('media', exist_ok=True)
+        os.makedirs(media_dir, exist_ok=True)
         
         # Step 1: Setup LLM
         update_job_status(job_id, status='running', progress=5, current_step='script', 
@@ -106,7 +109,7 @@ def generate_video_workflow(job_id, topic, enable_tts, llm_provider):
         update_job_status(job_id, progress=10, current_step='script', 
                          message=f'Generating script with {provider}...')
         
-        json_file = f"video-output-{job_id}.json"
+        json_file = str(content_dir / f"video-output-{job_id}.json")
         video_data = generate_script_json(client, topic, json_file, provider, model)
         
         if not video_data:
@@ -176,20 +179,58 @@ def generate_video_workflow(job_id, topic, enable_tts, llm_provider):
             class_name = manim_code.get('class_name', f'Scene{index}')
             
             filename = f"{topic_slug}-{job_id}-{index}.py"
-            filepath = os.path.join(content_dir, filename)
+            filepath = str(content_dir / filename)
             
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(code_content)
+            # REPL Loop: Try to compile, if error -> fix -> retry
+            max_repl_iterations = 3
+            current_code = code_content
+            current_class_name = class_name
+            video_path = None
             
-            # Compile video
-            video_path = compile_video(filepath, class_name, topic_slug, index)
+            for repl_iteration in range(max_repl_iterations):
+                # Write current code to file
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(current_code)
+                
+                # Try to compile
+                video_path, compile_error = compile_video(filepath, current_class_name, topic_slug, index)
+                
+                if video_path and os.path.exists(video_path):
+                    # Success! Exit the REPL loop
+                    print(f"[REPL] Scene {index} compiled successfully on iteration {repl_iteration + 1}")
+                    break
+                
+                if compile_error and repl_iteration < max_repl_iterations - 1:
+                    # Error occurred, try to fix with LLM
+                    update_job_status(job_id, progress=scene_progress, current_step='code', 
+                                     message=f'Fixing scene {index} (attempt {repl_iteration + 2}/{max_repl_iterations})...')
+                    
+                    fixed_code = fix_manim_code(
+                        client=client,
+                        original_code=current_code,
+                        error_message=compile_error,
+                        class_name=current_class_name,
+                        provider=provider,
+                        model=model
+                    )
+                    
+                    if fixed_code:
+                        current_code = fixed_code.get('content', '')
+                        current_class_name = fixed_code.get('class_name', current_class_name)
+                    else:
+                        # LLM couldn't fix it, break out of REPL loop
+                        print(f"[REPL] Could not fix scene {index}, skipping")
+                        break
+                else:
+                    # No error message or max iterations reached
+                    break
             
             if video_path and os.path.exists(video_path):
                 generated_videos.append(video_path)
                 previous_context = {
                     'text': text,
                     'animation': animation,
-                    'code': code_content
+                    'code': current_code  # Use the final (possibly fixed) code
                 }
         
         if not generated_videos:
@@ -199,14 +240,14 @@ def generate_video_workflow(job_id, topic, enable_tts, llm_provider):
         update_job_status(job_id, progress=80, current_step='video', 
                          message='Concatenating video scenes...')
         
-        silent_video_path = f"media/output_silent_{job_id}.mp4"
+        silent_video_path = str(media_dir / f"output_silent_{job_id}.mp4")
         success = concatenate_videos(generated_videos, silent_video_path)
         
         if not success:
             raise Exception("Failed to concatenate videos")
         
         # Step 6: Merge Audio (if available)
-        final_output_path = f"media/output_{job_id}.mp4"
+        final_output_path = str(media_dir / f"output_{job_id}.mp4")
         
         if audio_path and os.path.exists(audio_path):
             update_job_status(job_id, progress=90, current_step='video', 

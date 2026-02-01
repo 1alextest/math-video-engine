@@ -14,7 +14,11 @@ def sanitize_filename(filename):
     return sanitized
 
 def compile_video(file_path, class_name, topic_slug, index):
-    """Compiles the video using Manim"""
+    """Compiles the video using Manim
+    
+    Returns:
+        tuple: (video_path, error_message) - video_path is None if failed, error_message is None if success
+    """
     try:
         cmd = ["manim", "-ql", file_path, class_name]
         print(f"\nCompiling: {' '.join(cmd)}")
@@ -33,18 +37,21 @@ def compile_video(file_path, class_name, topic_slug, index):
             filename_without_ext = os.path.splitext(os.path.basename(file_path))[0]
             # Video will be in media/videos/{filename_without_extension}/480p15/{class_name}.mp4
             video_path = f"media/videos/{filename_without_ext}/480p15/{class_name}.mp4"
-            return video_path
+            return video_path, None
         else:
+            error_msg = result.stderr
             print(f"[ERROR] Error compiling video:")
-            print(result.stderr)
-            return None
+            print(error_msg)
+            return None, error_msg
             
     except subprocess.TimeoutExpired:
-        print(f"[ERROR] Timeout compiling video")
-        return None
+        error_msg = "Timeout: Compilation took more than 5 minutes"
+        print(f"[ERROR] {error_msg}")
+        return None, error_msg
     except Exception as e:
-        print(f"[ERROR] Error: {e}")
-        return None
+        error_msg = str(e)
+        print(f"[ERROR] Error: {error_msg}")
+        return None, error_msg
 
 
 def concatenate_videos(video_paths, output_path):

@@ -1,7 +1,0 @@
-openai
-python-dotenv
-anthropic
-manim
-flask
-flask-cors
-google-generativeai

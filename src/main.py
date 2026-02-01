@@ -1,21 +1,32 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
+import sys
+from pathlib import Path
+
+# Add parent directory to path to enable imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 from video_generator import start_video_generation, get_job_status
 
+# Get absolute path to frontend directory
+FRONTEND_DIR = Path(__file__).parent / 'frontend'
+
 app = Flask(__name__, 
-            static_folder='frontend',
+            static_folder=str(FRONTEND_DIR),
             static_url_path='/static')
 CORS(app)
 
-# Ensure media directory exists
-os.makedirs('media', exist_ok=True)
+# Ensure media directory exists (at project root level)
+PROJECT_ROOT = Path(__file__).parent.parent
+MEDIA_DIR = PROJECT_ROOT / 'media'
+os.makedirs(MEDIA_DIR, exist_ok=True)
 
 
 @app.route('/')
 def index():
     """Serve the main HTML page"""
-    return send_from_directory('frontend', 'index.html')
+    return send_from_directory(FRONTEND_DIR, 'index.html')
 
 
 @app.route('/api/generate', methods=['POST'])
@@ -58,7 +69,7 @@ def get_progress(job_id):
 @app.route('/media/<path:filename>')
 def serve_media(filename):
     """Serve generated media files"""
-    return send_from_directory('media', filename)
+    return send_from_directory(MEDIA_DIR, filename)
 
 
 @app.route('/api/health', methods=['GET'])
