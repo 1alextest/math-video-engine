@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
@@ -11,6 +12,17 @@ from concat_video import (
     merge_video_and_audio,
     sanitize_filename,
 )
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _project_temp(suffix=".tmp"):
+    """Create a temporary file inside the project directory for path-validation tests."""
+    tmp_dir = _PROJECT_ROOT / "tests" / "tmp"
+    tmp_dir.mkdir(exist_ok=True)
+    fd, path = tempfile.mkstemp(dir=str(tmp_dir), suffix=suffix)
+    os.close(fd)
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -34,7 +46,9 @@ def test_sanitize_filename_strips_edges():
 @patch("video_settings.normalize_video_settings")
 def test_compile_video_missing_file(mock_norm):
     mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
-    path, err = compile_video("/nonexistent.py", "Scene1", "test", 1)
+    path, err = compile_video(
+        str(_PROJECT_ROOT / "content" / "nonexistent.py"), "Scene1", "test", 1
+    )
     assert path is None
     assert "Source file not found" in err
 
@@ -42,9 +56,9 @@ def test_compile_video_missing_file(mock_norm):
 @patch("video_settings.normalize_video_settings")
 def test_compile_video_invalid_class_name(mock_norm):
     mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+    temp_path = _project_temp(".py")
+    with open(temp_path, "w") as f:
         f.write("# test")
-        temp_path = f.name
     try:
         path, err = compile_video(temp_path, "123Bad", "test", 1)
         assert path is None
@@ -59,9 +73,9 @@ def test_compile_video_success(mock_run, mock_norm):
     mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     mock_run.return_value = MagicMock(returncode=0, stderr="")
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+    temp_path = _project_temp(".py")
+    with open(temp_path, "w") as f:
         f.write("# test")
-        temp_path = f.name
     try:
         path, err = compile_video(temp_path, "Scene1", "topic", 1)
         assert path is not None
@@ -77,9 +91,9 @@ def test_compile_video_failure(mock_run, mock_norm):
     mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     mock_run.return_value = MagicMock(returncode=1, stderr="syntax error")
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+    temp_path = _project_temp(".py")
+    with open(temp_path, "w") as f:
         f.write("# test")
-        temp_path = f.name
     try:
         path, err = compile_video(temp_path, "Scene1", "topic", 1)
         assert path is None
@@ -96,9 +110,9 @@ def test_compile_video_timeout(mock_run, mock_norm):
 
     mock_run.side_effect = TimeoutExpired(cmd=["manim"], timeout=300)
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+    temp_path = _project_temp(".py")
+    with open(temp_path, "w") as f:
         f.write("# test")
-        temp_path = f.name
     try:
         path, err = compile_video(temp_path, "Scene1", "topic", 1)
         assert path is None
@@ -117,11 +131,11 @@ def test_concatenate_videos_empty_list():
 @patch("concat_video.subprocess.run")
 def test_concatenate_videos_success(mock_run):
     mock_run.return_value = MagicMock(returncode=0, stderr="")
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".mp4", delete=False) as f:
+    vid = _project_temp(".mp4")
+    with open(vid, "w") as f:
         f.write("fake")
-        vid = f.name
     try:
-        result = concatenate_videos([vid], "out.mp4")
+        result = concatenate_videos([vid], str(_PROJECT_ROOT / "media" / "out.mp4"))
         assert result is True
         # Should create a tempfile list and clean it up
         calls = mock_run.call_args_list
@@ -134,11 +148,11 @@ def test_concatenate_videos_success(mock_run):
 @patch("concat_video.subprocess.run")
 def test_concatenate_videos_failure(mock_run):
     mock_run.return_value = MagicMock(returncode=1, stderr="ffmpeg error")
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".mp4", delete=False) as f:
+    vid = _project_temp(".mp4")
+    with open(vid, "w") as f:
         f.write("fake")
-        vid = f.name
     try:
-        result = concatenate_videos([vid], "out.mp4")
+        result = concatenate_videos([vid], str(_PROJECT_ROOT / "media" / "out.mp4"))
         assert result is False
     finally:
         if os.path.exists(vid):
@@ -149,15 +163,29 @@ def test_concatenate_videos_failure(mock_run):
 # merge_video_and_audio
 # ---------------------------------------------------------------------------
 def test_merge_missing_video():
-    assert merge_video_and_audio("/no/video.mp4", "/no/audio.mp3", "out.mp4") is False
+    assert (
+        merge_video_and_audio(
+            str(_PROJECT_ROOT / "media" / "no_video.mp4"),
+            str(_PROJECT_ROOT / "media" / "no_audio.mp3"),
+            str(_PROJECT_ROOT / "media" / "out.mp4"),
+        )
+        is False
+    )
 
 
 def test_merge_missing_audio():
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".mp4", delete=False) as f:
+    vid = _project_temp(".mp4")
+    with open(vid, "w") as f:
         f.write("fake")
-        vid = f.name
     try:
-        assert merge_video_and_audio(vid, "/no/audio.mp3", "out.mp4") is False
+        assert (
+            merge_video_and_audio(
+                vid,
+                str(_PROJECT_ROOT / "media" / "no_audio.mp3"),
+                str(_PROJECT_ROOT / "media" / "out.mp4"),
+            )
+            is False
+        )
     finally:
         os.remove(vid)
 
@@ -165,14 +193,15 @@ def test_merge_missing_audio():
 @patch("concat_video.subprocess.run")
 def test_merge_success(mock_run):
     mock_run.return_value = MagicMock(returncode=0, stderr="")
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".mp4", delete=False) as vf:
+    vid = _project_temp(".mp4")
+    aud = _project_temp(".mp3")
+    with open(vid, "w") as vf:
         vf.write("fakevid")
-        vid = vf.name
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".mp3", delete=False) as af:
+    with open(aud, "w") as af:
         af.write("fakeaudio")
-        aud = af.name
+    out = str(_PROJECT_ROOT / "media" / "out.mp4")
     try:
-        assert merge_video_and_audio(vid, aud, "out.mp4") is True
+        assert merge_video_and_audio(vid, aud, out) is True
     finally:
         os.remove(vid)
         os.remove(aud)
@@ -181,14 +210,15 @@ def test_merge_success(mock_run):
 @patch("concat_video.subprocess.run")
 def test_merge_failure(mock_run):
     mock_run.return_value = MagicMock(returncode=1, stderr="codec error")
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".mp4", delete=False) as vf:
+    vid = _project_temp(".mp4")
+    aud = _project_temp(".mp3")
+    with open(vid, "w") as vf:
         vf.write("fakevid")
-        vid = vf.name
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".mp3", delete=False) as af:
+    with open(aud, "w") as af:
         af.write("fakeaudio")
-        aud = af.name
+    out = str(_PROJECT_ROOT / "media" / "out.mp4")
     try:
-        assert merge_video_and_audio(vid, aud, "out.mp4") is False
+        assert merge_video_and_audio(vid, aud, out) is False
     finally:
         os.remove(vid)
         os.remove(aud)

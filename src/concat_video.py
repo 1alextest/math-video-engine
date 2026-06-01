@@ -3,6 +3,25 @@ import subprocess
 import os
 import re
 import tempfile
+from pathlib import Path
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _safe_project_path(path: str, label: str = "path") -> str:
+    """Validate that a path is within the project root (prevents traversal attacks)."""
+    if not path or not isinstance(path, str):
+        raise ValueError(f"Invalid {label}: must be a non-empty string")
+    resolved = Path(path).resolve()
+    # Block absolute paths outside project and traversal sequences
+    try:
+        resolved.relative_to(_PROJECT_ROOT)
+    except ValueError:
+        raise ValueError(f"Invalid {label}: must be inside project directory")
+    # Reject paths with null bytes or control chars
+    if "\x00" in path:
+        raise ValueError(f"Invalid {label}: contains null bytes")
+    return str(resolved)
 
 
 def sanitize_filename(filename):
@@ -28,6 +47,11 @@ def compile_video(file_path, class_name, topic_slug, index, quality="standard"):
     quality_preset = normalize_video_settings({"quality": quality})["quality_preset"]
     manim_flag = quality_preset["manim_flag"]
     output_subdir = quality_preset["output_subdir"]
+
+    try:
+        file_path = _safe_project_path(file_path, "file_path")
+    except ValueError as exc:
+        return None, str(exc)
 
     if not os.path.exists(file_path):
         return None, f"Source file not found: {file_path}"
@@ -71,6 +95,15 @@ def concatenate_videos(video_paths, output_path):
         print("[ERROR] No videos to concatenate")
         return False
 
+    # Validate all input paths
+    safe_paths = []
+    for vp in video_paths:
+        try:
+            safe_paths.append(_safe_project_path(vp, "video_path"))
+        except ValueError as exc:
+            print(f"[ERROR] {exc}")
+            return False
+
     # Create media folder if it doesn't exist
     os.makedirs("media", exist_ok=True)
 
@@ -79,7 +112,7 @@ def concatenate_videos(video_paths, output_path):
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             list_file = f.name
-            for video_path in video_paths:
+            for video_path in safe_paths:
                 if os.path.exists(video_path):
                     f.write(f"file '../{video_path}'\n")
 
@@ -128,6 +161,14 @@ def merge_video_and_audio(video_path, audio_path, output_path):
     Returns:
         True if successful, False otherwise
     """
+    try:
+        video_path = _safe_project_path(video_path, "video_path")
+        audio_path = _safe_project_path(audio_path, "audio_path")
+        output_path = _safe_project_path(output_path, "output_path")
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        return False
+
     if not os.path.exists(video_path):
         print(f"[ERROR] Video file not found: {video_path}")
         return False

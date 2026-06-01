@@ -5,10 +5,28 @@ import subprocess
 import tempfile
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from openai import OpenAI
 
 from env_loader import load_app_env, get_env
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _safe_project_path(path: str, label: str = "path") -> str:
+    """Validate that a path is within the project root (prevents traversal attacks)."""
+    if not path or not isinstance(path, str):
+        raise ValueError(f"Invalid {label}: must be a non-empty string")
+    resolved = Path(path).resolve()
+    try:
+        resolved.relative_to(_PROJECT_ROOT)
+    except ValueError:
+        raise ValueError(f"Invalid {label}: must be inside project directory")
+    if "\x00" in path:
+        raise ValueError(f"Invalid {label}: contains null bytes")
+    return str(resolved)
+
 
 ELEVENLABS_MAX_CHARS = 4500
 ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech"
@@ -28,6 +46,7 @@ OPENAI_VOICES = [
 def get_audio_duration(audio_path):
     """Gets the duration of an audio file using ffprobe."""
     try:
+        audio_path = _safe_project_path(audio_path, "audio_path")
         cmd = [
             "ffprobe",
             "-v",
@@ -262,7 +281,15 @@ def _split_text_for_tts(text, max_chars=ELEVENLABS_MAX_CHARS):
 
 def concatenate_audio_fragments(audio_paths, output_path="media/audio.mp3"):
     """Concatenate multiple audio fragments into a single MP3 file using ffmpeg."""
-    valid_paths = [path for path in audio_paths if path and os.path.exists(path)]
+    safe_paths = []
+    for p in audio_paths:
+        try:
+            safe_paths.append(_safe_project_path(p, "audio_path"))
+        except ValueError as exc:
+            print(f"[ERROR] {exc}")
+            continue
+
+    valid_paths = [path for path in safe_paths if os.path.exists(path)]
     if not valid_paths:
         print("[ERROR] No audio fragments to concatenate")
         return False

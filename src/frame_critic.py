@@ -13,6 +13,22 @@ from json_utils import extract_json_from_llm_response
 from llm_chat import complete_llm_vision
 from visual_events import format_events_for_prompt
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _safe_project_path(path: str, label: str = "path") -> str:
+    """Validate that a path is within the project root (prevents traversal attacks)."""
+    if not path or not isinstance(path, str):
+        raise ValueError(f"Invalid {label}: must be a non-empty string")
+    resolved = Path(path).resolve()
+    try:
+        resolved.relative_to(_PROJECT_ROOT)
+    except ValueError:
+        raise ValueError(f"Invalid {label}: must be inside project directory")
+    if "\x00" in path:
+        raise ValueError(f"Invalid {label}: contains null bytes")
+    return str(resolved)
+
 
 def is_critic_enabled() -> bool:
     load_app_env()
@@ -37,7 +53,11 @@ def critic_max_retries() -> int:
 
 def extract_video_frames(video_path: str, count: int = 3) -> List[str]:
     """Extract JPEG frames from a scene video using ffmpeg."""
-    if not video_path or not os.path.isfile(video_path):
+    try:
+        video_path = _safe_project_path(video_path, "video_path")
+    except ValueError:
+        return []
+    if not os.path.isfile(video_path):
         return []
 
     abs_path = str(Path(video_path).resolve())
