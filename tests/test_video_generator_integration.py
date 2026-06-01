@@ -15,14 +15,28 @@ from video_generator import (
 )
 
 
+import time
+
+
 @pytest.fixture(autouse=True)
 def clean_jobs():
-    """Clear in-memory jobs dict before each test."""
-    from video_generator import jobs
+    """Clear in-memory jobs dict and cancel lingering threads before each test."""
+    from video_generator import jobs, jobs_lock
 
-    jobs.clear()
+    def _drain():
+        with jobs_lock:
+            for job in list(jobs.values()):
+                job["cancel_requested"] = True
+        from video_generator import _job_threads
+        for jid, thread in list(_job_threads.items()):
+            if thread.is_alive():
+                thread.join(timeout=0.5)
+        _job_threads.clear()
+        jobs.clear()
+
+    _drain()
     yield
-    jobs.clear()
+    _drain()
 
 
 def test_start_video_generation_creates_job():

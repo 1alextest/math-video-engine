@@ -34,6 +34,7 @@ def get_available_llm_providers():
 # Global state (in production, use Redis or a database)
 jobs = {}
 jobs_lock = threading.RLock()
+_job_threads = {}
 
 _JOBS_DIR = Path(__file__).parent.parent / "content" / "jobs"
 _JOBS_DIR.mkdir(parents=True, exist_ok=True)
@@ -440,6 +441,8 @@ def start_video_generation(
         daemon=True,
     )
     thread.start()
+    with jobs_lock:
+        _job_threads[job_id] = thread
     return job_id
 
 
