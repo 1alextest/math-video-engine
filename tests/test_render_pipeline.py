@@ -1,9 +1,7 @@
 """Tests for render_pipeline checkpointing, cancellation, and scene compilation."""
 
 import os
-import tempfile
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -45,7 +43,6 @@ def test_ensure_not_cancelled_raises():
 
 def test_ensure_not_cancelled_ok():
     jobs = {"j1": {"cancel_requested": False}}
-    from render_pipeline import JobCancelledError
 
     ensure_not_cancelled(jobs, "j1")  # should not raise
 
@@ -126,8 +123,7 @@ def test_save_checkpoint_to_job_with_lock():
 def test_compile_with_repl_success_first_try(mock_compile, mock_exists):
     mock_compile.return_value = ("media/vid.mp4", None)
     path, code, cls = _compile_with_repl(
-        MagicMock(), "openai", "gpt-4o",
-        "/tmp/test.py", "code", "Scene1", "topic", 1, "standard"
+        MagicMock(), "openai", "gpt-4o", "/tmp/test.py", "code", "Scene1", "topic", 1, "standard"
     )
     assert path == "media/vid.mp4"
     assert code == "code"
@@ -145,8 +141,7 @@ def test_compile_with_repl_fix_on_second_try(mock_fix, mock_compile, mock_exists
     ]
     mock_fix.return_value = {"content": "fixed_code", "class_name": "Scene1Fixed"}
     path, code, cls = _compile_with_repl(
-        MagicMock(), "openai", "gpt-4o",
-        "/tmp/test.py", "code", "Scene1", "topic", 1, "standard"
+        MagicMock(), "openai", "gpt-4o", "/tmp/test.py", "code", "Scene1", "topic", 1, "standard"
     )
     assert path == "media/vid.mp4"
     assert code == "fixed_code"
@@ -160,8 +155,7 @@ def test_compile_with_repl_gives_up(mock_fix, mock_compile):
     mock_compile.return_value = (None, "syntax error")
     mock_fix.return_value = None
     path, code, cls = _compile_with_repl(
-        MagicMock(), "openai", "gpt-4o",
-        "/tmp/test.py", "code", "Scene1", "topic", 1, "standard"
+        MagicMock(), "openai", "gpt-4o", "/tmp/test.py", "code", "Scene1", "topic", 1, "standard"
     )
     assert path is None
     assert mock_fix.call_count == 1  # only tries once (max_repl=3, stops when fix returns None)

@@ -1,6 +1,5 @@
 """Shared helpers for provider-specific LLM chat calls."""
 
-import base64
 import json
 import urllib.error
 import urllib.request
@@ -74,11 +73,10 @@ def complete_llm_vision(
         return response.content[0].text.strip()
 
     if provider == "ollama":
-        images = [base64.standard_b64decode(b64) for b64 in images_base64]
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": user_prompt, "images": images})
+        messages.append({"role": "user", "content": user_prompt, "images": images_base64})
         url = f"{client.base_url}/api/chat"
         payload = json.dumps(
             {

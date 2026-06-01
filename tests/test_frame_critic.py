@@ -3,7 +3,6 @@
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from frame_critic import (
     build_critic_fix_prompt,
@@ -66,9 +65,7 @@ def test_critic_max_retries_override():
 # critique_scene_frames
 # ---------------------------------------------------------------------------
 def test_critique_no_frames_skips():
-    result = critique_scene_frames(
-        MagicMock(), "openai", "gpt-4o", [], "narration", "animation"
-    )
+    result = critique_scene_frames(MagicMock(), "openai", "gpt-4o", [], "narration", "animation")
     assert result["skipped"] is True
     assert result["ok"] is True
     assert result["score"] == 10
@@ -81,8 +78,7 @@ def test_critique_success(mock_encode, mock_vision):
     mock_vision.return_value = '{"score": 8, "issues": [], "suggestions": "", "ok": true}'
     with patch("frame_critic.format_events_for_prompt", return_value=""):
         result = critique_scene_frames(
-            MagicMock(), "openai", "gpt-4o",
-            ["/tmp/fake.jpg"], "narration", "animation"
+            MagicMock(), "openai", "gpt-4o", ["/tmp/fake.jpg"], "narration", "animation"
         )
     assert result["ok"] is True
     assert result["score"] == 8.0
@@ -96,8 +92,7 @@ def test_critique_exception_fallback(mock_encode, mock_vision):
     mock_vision.side_effect = ValueError("bad response")
     with patch("frame_critic.format_events_for_prompt", return_value=""):
         result = critique_scene_frames(
-            MagicMock(), "openai", "gpt-4o",
-            ["/tmp/fake.jpg"], "narration", "animation"
+            MagicMock(), "openai", "gpt-4o", ["/tmp/fake.jpg"], "narration", "animation"
         )
     assert result["skipped"] is True
     assert result["ok"] is True

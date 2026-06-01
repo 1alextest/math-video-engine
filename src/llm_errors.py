@@ -2,16 +2,16 @@ def format_llm_error(error):
     """Turn raw LLM API exceptions into actionable user-facing messages."""
     message = str(error)
 
-    if "insufficient_balance" in message or "insufficient balance" in message.lower():
-        return (
-            "This LLM account has insufficient balance. "
-            "Add credits or switch to Ollama in the LLM provider dropdown."
-        )
-
     if "suspended due to insufficient balance" in message.lower():
         return (
             "Kimi account is suspended due to insufficient balance. "
             "Recharge at platform.kimi.ai or use Ollama instead."
+        )
+
+    if "insufficient_balance" in message or "insufficient balance" in message.lower():
+        return (
+            "This LLM account has insufficient balance. "
+            "Add credits or switch to Ollama in the LLM provider dropdown."
         )
 
     if "invalid_authentication" in message or "Invalid Authentication" in message:

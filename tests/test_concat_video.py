@@ -4,7 +4,6 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from concat_video import (
     compile_video,
@@ -34,9 +33,7 @@ def test_sanitize_filename_strips_edges():
 # ---------------------------------------------------------------------------
 @patch("video_settings.normalize_video_settings")
 def test_compile_video_missing_file(mock_norm):
-    mock_norm.return_value = {
-        "quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}
-    }
+    mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     path, err = compile_video("/nonexistent.py", "Scene1", "test", 1)
     assert path is None
     assert "Source file not found" in err
@@ -44,9 +41,7 @@ def test_compile_video_missing_file(mock_norm):
 
 @patch("video_settings.normalize_video_settings")
 def test_compile_video_invalid_class_name(mock_norm):
-    mock_norm.return_value = {
-        "quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}
-    }
+    mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write("# test")
         temp_path = f.name
@@ -61,9 +56,7 @@ def test_compile_video_invalid_class_name(mock_norm):
 @patch("video_settings.normalize_video_settings")
 @patch("concat_video.subprocess.run")
 def test_compile_video_success(mock_run, mock_norm):
-    mock_norm.return_value = {
-        "quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}
-    }
+    mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     mock_run.return_value = MagicMock(returncode=0, stderr="")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -81,9 +74,7 @@ def test_compile_video_success(mock_run, mock_norm):
 @patch("video_settings.normalize_video_settings")
 @patch("concat_video.subprocess.run")
 def test_compile_video_failure(mock_run, mock_norm):
-    mock_norm.return_value = {
-        "quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}
-    }
+    mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     mock_run.return_value = MagicMock(returncode=1, stderr="syntax error")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -100,9 +91,7 @@ def test_compile_video_failure(mock_run, mock_norm):
 @patch("video_settings.normalize_video_settings")
 @patch("concat_video.subprocess.run")
 def test_compile_video_timeout(mock_run, mock_norm):
-    mock_norm.return_value = {
-        "quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}
-    }
+    mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     from subprocess import TimeoutExpired
 
     mock_run.side_effect = TimeoutExpired(cmd=["manim"], timeout=300)

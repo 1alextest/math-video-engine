@@ -1,6 +1,5 @@
 """Integration tests for video_generator workflow with mocked LLM/TTS/render."""
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,6 +27,7 @@ def clean_jobs():
             for job in list(jobs.values()):
                 job["cancel_requested"] = True
         from video_generator import _job_threads
+
         for jid, thread in list(_job_threads.items()):
             if thread.is_alive():
                 thread.join(timeout=0.5)
@@ -234,7 +234,6 @@ def test_continue_video_generation_starts_worker(mock_setup_llm):
                 continue_video_generation(job_id)
 
     # Give the thread a moment to start
-    import time
 
     time.sleep(0.2)
 
