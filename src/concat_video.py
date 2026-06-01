@@ -1,6 +1,9 @@
+# ISS-0001: sanitize subprocess inputs, use tempfile for concurrency safety
 import subprocess
 import os
 import re
+import tempfile
+
 
 def sanitize_filename(filename):
     """Remove or replace problematic characters from filenames"""
@@ -13,37 +16,45 @@ def sanitize_filename(filename):
     sanitized = sanitized.strip("_")
     return sanitized
 
-def compile_video(file_path, class_name, topic_slug, index):
+
+def compile_video(file_path, class_name, topic_slug, index, quality="standard"):
     """Compiles the video using Manim
-    
+
     Returns:
         tuple: (video_path, error_message) - video_path is None if failed, error_message is None if success
     """
+    from video_settings import normalize_video_settings
+
+    quality_preset = normalize_video_settings({"quality": quality})["quality_preset"]
+    manim_flag = quality_preset["manim_flag"]
+    output_subdir = quality_preset["output_subdir"]
+
+    if not os.path.exists(file_path):
+        return None, f"Source file not found: {file_path}"
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", class_name):
+        return None, f"Invalid class name: {class_name}"
+
     try:
-        cmd = ["manim", "-ql", file_path, class_name]
+        cmd = ["manim", manim_flag, file_path, class_name]
         print(f"\nCompiling: {' '.join(cmd)}")
-        
+
         result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 minutes timeout
+            cmd, capture_output=True, text=True, timeout=300  # 5 minutes timeout
         )
-        
+
         if result.returncode == 0:
-            print(f"[OK] Video compiled successfully")
+            print("[OK] Video compiled successfully")
             # Manim creates directory based on the Python filename (without extension)
             # Extract filename without extension from file_path
             filename_without_ext = os.path.splitext(os.path.basename(file_path))[0]
-            # Video will be in media/videos/{filename_without_extension}/480p15/{class_name}.mp4
-            video_path = f"media/videos/{filename_without_ext}/480p15/{class_name}.mp4"
+            video_path = f"media/videos/{filename_without_ext}/{output_subdir}/{class_name}.mp4"
             return video_path, None
         else:
             error_msg = result.stderr
-            print(f"[ERROR] Error compiling video:")
+            print("[ERROR] Error compiling video:")
             print(error_msg)
             return None, error_msg
-            
+
     except subprocess.TimeoutExpired:
         error_msg = "Timeout: Compilation took more than 5 minutes"
         print(f"[ERROR] {error_msg}")
@@ -59,94 +70,108 @@ def concatenate_videos(video_paths, output_path):
     if not video_paths:
         print("[ERROR] No videos to concatenate")
         return False
-    
+
     # Create media folder if it doesn't exist
     os.makedirs("media", exist_ok=True)
-    
-    # Create list file for ffmpeg
-    list_file = "media/video_list.txt"
-    with open(list_file, 'w') as f:
-        for video_path in video_paths:
-            if os.path.exists(video_path):
-                f.write(f"file '../{video_path}'\n")
-    
+
+    # Create temporary list file for ffmpeg to avoid concurrency conflicts
+    list_file = None
     try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            list_file = f.name
+            for video_path in video_paths:
+                if os.path.exists(video_path):
+                    f.write(f"file '../{video_path}'\n")
+
         cmd = [
-            "ffmpeg", "-f", "concat", "-safe", "0",
-            "-i", list_file,
-            "-c", "copy",
+            "ffmpeg",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            list_file,
+            "-c",
+            "copy",
             output_path,
-            "-y"  # Overwrite if exists
+            "-y",  # Overwrite if exists
         ]
-        
-        print(f"\n  Concatenating videos...")
+
+        print("\n  Concatenating videos...")
         result = subprocess.run(cmd, capture_output=True, text=True)
-        
+
         if result.returncode == 0:
             print(f"[OK] Final video created: {output_path}")
-            # Clean up temporary file
-            os.remove(list_file)
             return True
         else:
-            print(f"[ERROR] Error concatenating videos:")
+            print("[ERROR] Error concatenating videos:")
             print(result.stderr)
             return False
-            
+
     except Exception as e:
         print(f"[ERROR] Error: {e}")
         return False
+    finally:
+        if list_file and os.path.exists(list_file):
+            os.remove(list_file)
 
 
 def merge_video_and_audio(video_path, audio_path, output_path):
     """
     Merges video and audio files into a single MP4 file using ffmpeg
-    
+
     Args:
         video_path: Path to the video file (without audio)
         audio_path: Path to the audio file (MP3)
         output_path: Path for the final merged video
-    
+
     Returns:
         True if successful, False otherwise
     """
     if not os.path.exists(video_path):
         print(f"[ERROR] Video file not found: {video_path}")
         return False
-    
+
     if not os.path.exists(audio_path):
         print(f"[ERROR] Audio file not found: {audio_path}")
         return False
-    
+
     try:
         cmd = [
             "ffmpeg",
-            "-i", video_path,  # Input video
-            "-i", audio_path,  # Input audio
-            "-c:v", "copy",    # Copy video codec (no re-encoding)
-            "-c:a", "aac",     # Encode audio to AAC
-            "-map", "0:v:0",   # Map video from first input
-            "-map", "1:a:0",   # Map audio from second input
+            "-i",
+            video_path,  # Input video
+            "-i",
+            audio_path,  # Input audio
+            "-c:v",
+            "copy",  # Copy video codec (no re-encoding)
+            "-c:a",
+            "aac",  # Encode audio to AAC
+            "-map",
+            "0:v:0",  # Map video from first input
+            "-map",
+            "1:a:0",  # Map audio from second input
             output_path,
-            "-y"               # Overwrite if exists
+            "-y",  # Overwrite if exists
         ]
-        
+
         print(f"\n{'='*80}")
-        print(f"MERGING VIDEO AND AUDIO")
+        print("MERGING VIDEO AND AUDIO")
         print(f"{'='*80}")
         print(f"Video: {video_path}")
         print(f"Audio: {audio_path}")
         print(f"Output: {output_path}\n")
-        
+
         result = subprocess.run(cmd, capture_output=True, text=True)
-        
+
         if result.returncode == 0:
             print(f"[OK] Final video with audio created: {output_path}\n")
             return True
         else:
-            print(f"[ERROR] Error merging video and audio:")
+            print("[ERROR] Error merging video and audio:")
             print(result.stderr)
             return False
-            
+
     except Exception as e:
         print(f"[ERROR] Error: {e}")
         return False

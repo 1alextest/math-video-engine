@@ -1,35 +1,61 @@
 import json
-import re
-import os
 import time
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+from env_loader import load_app_env
+from json_utils import extract_json_from_llm_response
+from llm_chat import complete_llm
 
-def generate_manim_code(client, text, animation, index, previous_context=None, provider='openai', model='gpt-4o', audio_duration=None, max_retries=3):
-    """Generates Manim code using the LLM with previous scene context, audio duration, and automatic retries"""
-    
+load_app_env()
+
+
+def generate_manim_code(
+    client,
+    text,
+    animation,
+    index,
+    previous_context=None,
+    provider="openai",
+    model="gpt-4o",
+    audio_duration=None,
+    video_settings=None,
+    visual_events=None,
+    max_retries=3,
+):
+    """Generates Manim code using the LLM with style registry, visual events, and retries."""
+    from video_settings import normalize_video_settings
+    from visual_events import format_events_for_prompt, normalize_visual_events
+
+    video_settings = normalize_video_settings(video_settings)
+    style_guide = video_settings["style_preset"]["visual_style"]
+    scene_duration = video_settings["length_preset"]["scene_duration_sec"]
+
+    events = normalize_visual_events(visual_events)
+    if not events and previous_context:
+        events = normalize_visual_events(previous_context.get("visual_events"))
+    events_section = f"""
+REQUIRED VISUAL EVENTS (implement ALL of these in the animation):
+{format_events_for_prompt(events)}
+"""
+
     # Build context section if it exists
     context_section = ""
     if previous_context:
+        registry_block = previous_context.get("style_registry") or ""
         context_section = f"""
-PREVIOUS SCENE CONTEXT (to maintain continuity):
+PREVIOUS SCENE CONTEXT (maintain continuity):
 - Previous text: {previous_context.get('text', 'N/A')}
 - Previous animation: {previous_context.get('animation', 'N/A')}
-- Previous generated code:
+{registry_block}
+- Previous generated code (reference for style continuity):
 ```python
 {previous_context.get('code', 'N/A')}
 ```
-
-IMPORTANT: Maintain visual and narrative coherence with the previous scene.
-If the previous scene ended with certain elements or style, consider that when designing this scene.
 """
     else:
         context_section = """
 CONTEXT: This is the FIRST scene of the video.
 """
-    
+
     # Add audio duration information if available
     duration_section = ""
     if audio_duration:
@@ -46,14 +72,24 @@ CRITICAL AUDIO SYNCHRONIZATION:
   * Include small waits between animations for better pacing
 """
     else:
-        duration_section = """
+        duration_section = f"""
 TIMING GUIDANCE:
-- This scene should last approximately 6-8 seconds
+- This scene should last approximately {scene_duration} seconds
 - Use short run_time in animations (0.5-1.5 seconds)
 - Minimize use of self.wait() (maximum 0.5-1 second)
+- Total animation time should match ~{scene_duration}s
 """
-    
+
+    style_section = f"""
+VISUAL STYLE GUIDE (maintain consistency with other scenes):
+{style_guide}
+- Use self.camera.background_color = "#1a1a2e" at the start of construct()
+- Match fonts, colors, and layout from previous scenes when context is provided
+"""
+
     prompt = f"""{context_section}
+{events_section}
+{style_section}
 
 Generate Python code for Manim that implements this educational animation.
 
@@ -193,104 +229,82 @@ IMPORTANT:
 - Keep the animation simple but effective
 - ALWAYS clean old elements before showing new ones
 """
-    
-    
+
     # Retry loop for handling API failures
     for attempt in range(max_retries):
         try:
             print(f"[Scene {index}] Generating Manim code... (Attempt {attempt + 1}/{max_retries})")
-            
-            if provider == 'openai':
-                # OpenAI API call
-                # Note: For reasoning models, we need extra tokens for reasoning + output
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": "You are an expert in Manim Community Edition (v0.19.1). You generate simple, functional Python code without errors. NEVER use self.camera.frame in Scene. Always respond in valid JSON format."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_completion_tokens=16000
-                )
-                
-                content = response.choices[0].message.content
-                if content is None:
-                    print(f"[ERROR] OpenAI returned None content for scene {index}")
-                    print(f"[DEBUG] Finish reason: {response.choices[0].finish_reason}")
-                    raise Exception(f"OpenAI returned None content. Finish reason: {response.choices[0].finish_reason}")
-                
-                response_text = content.strip()
-                
-            elif provider == 'claude':
-                # Claude API call
-                response = client.messages.create(
-                    model=model,
-                    max_tokens=4000,
-                    system="You are an expert in Manim Community Edition (v0.19.1). You generate simple, functional Python code without errors. NEVER use self.camera.frame in Scene. Always respond in valid JSON format.",
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                response_text = response.content[0].text.strip()
-            
-            else:
-                raise ValueError(f"Unknown provider: {provider}")
-            
+
+            system_prompt = (
+                "You are an expert in Manim Community Edition (v0.19.1). You generate simple, "
+                "functional Python code without errors. NEVER use self.camera.frame in Scene. "
+                "Always respond in valid JSON format."
+            )
+            response_text = complete_llm(
+                client=client,
+                provider=provider,
+                model=model,
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+            )
+
             # Check for empty response
             if len(response_text) == 0:
                 print(f"[ERROR] Empty response from {provider} API for scene {index}")
                 if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt
+                    wait_time = 2**attempt
                     print(f"[RETRY] Retrying in {wait_time} seconds...")
                     time.sleep(wait_time)
                     continue
                 else:
                     print(f"[ERROR] Max retries reached for scene {index}. Giving up.")
                     return None
-            
-            # Try to extract JSON if wrapped in markdown
-            if "```json" in response_text:
-                response_text = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL).group(1)
-            elif "```" in response_text:
-                response_text = re.search(r'```\s*(.*?)\s*```', response_text, re.DOTALL).group(1)
-            
-            # Parse JSON
+
             try:
-                result = json.loads(response_text)
+                result = extract_json_from_llm_response(response_text)
                 print(f"[OK] Manim code generated for scene {index}")
                 return result
-            except json.JSONDecodeError as json_err:
+            except ValueError as json_err:
                 print(f"[ERROR] Failed to parse JSON for scene {index}: {json_err}")
-                
+
                 if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt
+                    wait_time = 2**attempt
                     print(f"[RETRY] Retrying in {wait_time} seconds...")
                     time.sleep(wait_time)
                     continue
                 else:
                     print(f"[ERROR] Max retries reached for scene {index}. Giving up.")
                     return None
-            
+
         except Exception as e:
             print(f"[ERROR] Error generating code for scene {index}: {e}")
-            
+
             if attempt < max_retries - 1:
-                wait_time = 2 ** attempt
+                wait_time = 2**attempt
                 print(f"[RETRY] Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
                 continue
             else:
                 print(f"[ERROR] Max retries reached for scene {index}. Giving up.")
                 return None
-    
+
     # Should never reach here
     return None
 
 
-def fix_manim_code(client, original_code, error_message, class_name, provider='openai', model='gpt-4o', max_fix_attempts=3):
+def fix_manim_code(
+    client,
+    original_code,
+    error_message,
+    class_name,
+    provider="openai",
+    model="gpt-4o",
+    max_fix_attempts=3,
+):
     """
     REPL-style function to fix Manim code based on compilation errors.
     Sends the error to the LLM and gets corrected code.
-    
+
     Args:
         client: LLM client (OpenAI or Anthropic)
         original_code: The Python code that failed to compile
@@ -299,16 +313,16 @@ def fix_manim_code(client, original_code, error_message, class_name, provider='o
         provider: 'openai' or 'claude'
         model: Model name
         max_fix_attempts: Maximum number of fix attempts
-        
+
     Returns:
         dict: {'content': fixed_code, 'class_name': class_name} or None if all attempts fail
     """
-    
+
     current_code = original_code
-    
+
     for attempt in range(max_fix_attempts):
         print(f"\n[REPL] Fixing code... (Attempt {attempt + 1}/{max_fix_attempts})")
-        
+
         fix_prompt = f"""The following Manim code failed to compile with an error. Please fix the code.
 
 CURRENT CODE:
@@ -341,64 +355,38 @@ RESPONSE FORMAT (JSON):
 Respond ONLY with valid JSON."""
 
         try:
-            if provider == 'openai':
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": "You are an expert debugger for Manim Community Edition (v0.19.1). You fix Python code errors. Always respond in valid JSON format."},
-                        {"role": "user", "content": fix_prompt}
-                    ],
-                    max_completion_tokens=16000
-                )
-                
-                content = response.choices[0].message.content
-                if content is None:
-                    print(f"[REPL] Empty response from LLM")
-                    continue
-                    
-                response_text = content.strip()
-                
-            elif provider == 'claude':
-                response = client.messages.create(
-                    model=model,
-                    max_tokens=4000,
-                    system="You are an expert debugger for Manim Community Edition (v0.19.1). You fix Python code errors. Always respond in valid JSON format.",
-                    messages=[
-                        {"role": "user", "content": fix_prompt}
-                    ]
-                )
-                response_text = response.content[0].text.strip()
-            
-            else:
-                raise ValueError(f"Unknown provider: {provider}")
-            
+            system_prompt = (
+                "You are an expert debugger for Manim Community Edition (v0.19.1). You fix Python "
+                "code errors. Always respond in valid JSON format."
+            )
+            response_text = complete_llm(
+                client=client,
+                provider=provider,
+                model=model,
+                system_prompt=system_prompt,
+                user_prompt=fix_prompt,
+            )
+
             if len(response_text) == 0:
-                print(f"[REPL] Empty response from LLM")
+                print("[REPL] Empty response from LLM")
                 continue
-            
-            # Try to extract JSON if wrapped in markdown
-            if "```json" in response_text:
-                response_text = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL).group(1)
-            elif "```" in response_text:
-                response_text = re.search(r'```\s*(.*?)\s*```', response_text, re.DOTALL).group(1)
-            
-            # Parse JSON
-            result = json.loads(response_text)
-            
-            fix_explanation = result.get('fix_explanation', 'No explanation provided')
+
+            result = extract_json_from_llm_response(response_text)
+
+            fix_explanation = result.get("fix_explanation", "No explanation provided")
             print(f"[REPL] Fix applied: {fix_explanation}")
-            
+
             return {
-                'content': result.get('content', ''),
-                'class_name': result.get('class_name', class_name)
+                "content": result.get("content", ""),
+                "class_name": result.get("class_name", class_name),
             }
-            
+
         except json.JSONDecodeError as json_err:
             print(f"[REPL] Failed to parse fix response: {json_err}")
             continue
         except Exception as e:
             print(f"[REPL] Error during fix attempt: {e}")
             continue
-    
-    print(f"[REPL] Max fix attempts reached. Giving up.")
+
+    print("[REPL] Max fix attempts reached. Giving up.")
     return None
