@@ -48,7 +48,8 @@ def test_start_video_generation_creates_job():
     )
     assert job_id is not None
     status = get_job_status(job_id)
-    assert status["status"] == "queued"
+    # Race: thread may already have switched status to "running"
+    assert status["status"] in ("queued", "running")
     assert status["topic"] == "Test Topic"
 
 

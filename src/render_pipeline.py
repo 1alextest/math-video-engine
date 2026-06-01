@@ -137,6 +137,7 @@ def _run_critic_loop(
     topic_slug,
     index,
     quality,
+    video_settings=None,
 ) -> Tuple[Optional[str], str, Dict[str, Any]]:
     critique_result = {"ok": True, "skipped": not is_critic_enabled(), "score": None, "issues": []}
     if not is_critic_enabled():
@@ -146,7 +147,13 @@ def _run_critic_loop(
     animation = scene_data.get("animation", "")
     events = scene_data.get("visual_events") or []
 
-    for attempt in range(critic_max_retries()):
+    critic_min = None
+    critic_retries = None
+    if video_settings:
+        critic_min = video_settings.get("critic_min_score")
+        critic_retries = video_settings.get("critic_max_retries")
+
+    for attempt in range(critic_max_retries(override=critic_retries)):
         frames = extract_video_frames(video_path)
         critique = critique_scene_frames(
             llm_client,
@@ -156,13 +163,20 @@ def _run_critic_loop(
             narration,
             animation,
             events,
+            override_min_score=critic_min,
         )
         critique_result = critique
         if critique.get("ok") or critique.get("skipped"):
             return video_path, code, critique_result
 
         print(f"[CRITIC] Scene {index} score {critique.get('score')} — fixing visuals...")
-        fix_prompt = build_critic_fix_prompt(code, critique, narration)
+        fix_prompt = build_critic_fix_prompt(
+            code,
+            critique,
+            narration,
+            animation=scene_data.get("animation", ""),
+            visual_events=events,
+        )
         try:
             response = complete_llm(
                 client=llm_client,
@@ -243,6 +257,7 @@ def compile_scene_from_code(
     content_dir,
     quality,
     on_fix_message=None,
+    video_settings=None,
 ) -> Tuple[Optional[str], str, Dict[str, Any]]:
     code_content = code_bundle.get("content", "")
     class_name = code_bundle.get("class_name", f"Scene{index}")
@@ -276,6 +291,7 @@ def compile_scene_from_code(
         topic_slug,
         index,
         quality,
+        video_settings=video_settings,
     )
     return video_path, final_code, critique
 
@@ -390,6 +406,7 @@ def render_scenes_with_pipeline(
             content_dir,
             quality,
             on_fix_message=on_fix,
+            video_settings=video_settings,
         )
 
     completed = 0
@@ -508,6 +525,7 @@ def render_single_scene(
         job_id,
         content_dir,
         quality,
+        video_settings=video_settings,
     )
     if video_path:
         checkpoint.setdefault("scene_videos", {})[key] = video_path

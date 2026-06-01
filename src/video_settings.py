@@ -1,5 +1,7 @@
 """Video length, style, and quality presets for consistent output."""
 
+import os
+
 SCENE_DURATION_LECTURE = 12
 SCENE_DURATION_QUICK = 8
 
@@ -96,16 +98,31 @@ QUALITY_PRESETS = {
         "label": "Preview (fast)",
         "manim_flag": "-ql",
         "output_subdir": "480p15",
+        "prompt_guidance": (
+            "This is a PREVIEW render (480p15). Use LARGE, BOLD elements. "
+            "Avoid thin lines or small text that will be illegible at low resolution. "
+            "Keep animations simple and avoid rapid small movements that could stutter at 15fps."
+        ),
     },
     "standard": {
         "label": "Standard",
         "manim_flag": "-qm",
         "output_subdir": "720p30",
+        "prompt_guidance": (
+            "This is a STANDARD render (720p30). Balance detail with clarity. "
+            "Use smooth animations (rate_func=smooth). Text should be readable at 720p."
+        ),
     },
     "high": {
         "label": "High quality",
         "manim_flag": "-qh",
         "output_subdir": "1080p60",
+        "prompt_guidance": (
+            "This is a HIGH QUALITY render (1080p60). You may use more detailed mobjects, "
+            "smoother curves, and finer text. Leverage the 60fps for silky motion. "
+            "Use rate_func=smooth and subtle easing for premium feel. "
+            "At 1080p, small details are visible — make them crisp."
+        ),
     },
 }
 
@@ -128,6 +145,79 @@ def normalize_video_settings(raw=None):
     if quality_key not in QUALITY_PRESETS:
         quality_key = "standard"
 
+    # UI-configurable production settings (override env defaults)
+    transition_duration = raw.get("transition_duration")
+    if transition_duration is not None:
+        try:
+            transition_duration = max(0.0, min(2.0, float(transition_duration)))
+        except (ValueError, TypeError):
+            transition_duration = None
+    if transition_duration is None:
+        try:
+            transition_duration = max(
+                0.0, min(2.0, float(os.getenv("SCENE_TRANSITION_DURATION", "0.3")))
+            )
+        except (ValueError, TypeError):
+            transition_duration = 0.3
+
+    critic_min_score = raw.get("critic_min_score")
+    if critic_min_score is not None:
+        try:
+            critic_min_score = max(0.0, min(10.0, float(critic_min_score)))
+        except (ValueError, TypeError):
+            critic_min_score = None
+    if critic_min_score is None:
+        try:
+            critic_min_score = max(0.0, min(10.0, float(os.getenv("CRITIC_MIN_SCORE", "8"))))
+        except (ValueError, TypeError):
+            critic_min_score = 8.0
+
+    critic_max_retries = raw.get("critic_max_retries")
+    if critic_max_retries is not None:
+        try:
+            critic_max_retries = max(0, min(5, int(critic_max_retries)))
+        except (ValueError, TypeError):
+            critic_max_retries = None
+    if critic_max_retries is None:
+        try:
+            critic_max_retries = max(0, min(5, int(os.getenv("CRITIC_MAX_RETRIES", "2"))))
+        except (ValueError, TypeError):
+            critic_max_retries = 2
+
+    # Assembly options
+    enable_title_card = bool(raw.get("enable_title_card", True))
+    title_card_duration = raw.get("title_card_duration")
+    if title_card_duration is not None:
+        try:
+            title_card_duration = max(0.5, min(5.0, float(title_card_duration)))
+        except (ValueError, TypeError):
+            title_card_duration = 2.5
+    else:
+        title_card_duration = 2.5
+
+    enable_end_screen = bool(raw.get("enable_end_screen", True))
+    end_screen_duration = raw.get("end_screen_duration")
+    if end_screen_duration is not None:
+        try:
+            end_screen_duration = max(0.5, min(5.0, float(end_screen_duration)))
+        except (ValueError, TypeError):
+            end_screen_duration = 3.0
+    else:
+        end_screen_duration = 3.0
+
+    transition_type = str(raw.get("transition_type", "crossfade")).lower()
+    if transition_type not in ("crossfade", "fade", "none"):
+        transition_type = "crossfade"
+
+    audio_fade_duration = raw.get("audio_fade_duration")
+    if audio_fade_duration is not None:
+        try:
+            audio_fade_duration = max(0.0, min(2.0, float(audio_fade_duration)))
+        except (ValueError, TypeError):
+            audio_fade_duration = 0.5
+    else:
+        audio_fade_duration = 0.5
+
     return {
         "length": length_key,
         "style": style_key,
@@ -136,6 +226,15 @@ def normalize_video_settings(raw=None):
         "length_preset": LENGTH_PRESETS[length_key],
         "style_preset": STYLE_PRESETS[style_key],
         "quality_preset": QUALITY_PRESETS[quality_key],
+        "transition_duration": transition_duration,
+        "critic_min_score": critic_min_score,
+        "critic_max_retries": critic_max_retries,
+        "enable_title_card": enable_title_card,
+        "title_card_duration": title_card_duration,
+        "enable_end_screen": enable_end_screen,
+        "end_screen_duration": end_screen_duration,
+        "transition_type": transition_type,
+        "audio_fade_duration": audio_fade_duration,
     }
 
 

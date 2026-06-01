@@ -4,6 +4,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -22,6 +23,29 @@ def _safe_project_path(path: str, label: str = "path") -> str:
     if "\x00" in path:
         raise ValueError(f"Invalid {label}: contains null bytes")
     return str(resolved)
+
+
+def _get_video_duration(path: str) -> Optional[float]:
+    """Get video duration in seconds using ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return float(result.stdout.strip())
+    except Exception:
+        return None
 
 
 def sanitize_filename(filename):
@@ -89,8 +113,45 @@ def compile_video(file_path, class_name, topic_slug, index, quality="standard"):
         return None, error_msg
 
 
-def concatenate_videos(video_paths, output_path):
-    """Joins all videos into one using ffmpeg"""
+def _concatenate_simple(video_paths, output_path):
+    """Fallback: join videos with hard cuts using ffmpeg concat demuxer."""
+    list_file = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            list_file = f.name
+            for video_path in video_paths:
+                if os.path.exists(video_path):
+                    f.write(f"file '../{video_path}'\n")
+
+        cmd = [
+            "ffmpeg",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            list_file,
+            "-c",
+            "copy",
+            output_path,
+            "-y",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode == 0
+    finally:
+        if list_file and os.path.exists(list_file):
+            os.remove(list_file)
+
+
+def concatenate_videos(video_paths, output_path, transition_duration=0.3):
+    """Joins all videos into one using ffmpeg with fade transitions between scenes.
+
+    Args:
+        video_paths: List of video file paths.
+        output_path: Output file path.
+        transition_duration: Duration of fade in/out at scene boundaries (seconds).
+                             Set to 0 for hard cuts (fallback behaviour).
+    """
     if not video_paths:
         print("[ERROR] No videos to concatenate")
         return False
@@ -107,46 +168,87 @@ def concatenate_videos(video_paths, output_path):
     # Create media folder if it doesn't exist
     os.makedirs("media", exist_ok=True)
 
-    # Create temporary list file for ffmpeg to avoid concurrency conflicts
-    list_file = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            list_file = f.name
-            for video_path in safe_paths:
-                if os.path.exists(video_path):
-                    f.write(f"file '../{video_path}'\n")
-
-        cmd = [
-            "ffmpeg",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            list_file,
-            "-c",
-            "copy",
-            output_path,
-            "-y",  # Overwrite if exists
-        ]
-
-        print("\n  Concatenating videos...")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode == 0:
+    if transition_duration <= 0 or len(safe_paths) == 1:
+        print("\n  Concatenating videos (simple)...")
+        ok = _concatenate_simple(safe_paths, output_path)
+        if ok:
             print(f"[OK] Final video created: {output_path}")
-            return True
         else:
-            print("[ERROR] Error concatenating videos:")
-            print(result.stderr)
-            return False
+            print("[ERROR] Error concatenating videos")
+        return ok
 
-    except Exception as e:
-        print(f"[ERROR] Error: {e}")
-        return False
-    finally:
-        if list_file and os.path.exists(list_file):
-            os.remove(list_file)
+    # Get durations for each video
+    durations = []
+    for path in safe_paths:
+        d = _get_video_duration(path)
+        if d is None:
+            print(f"[WARN] Could not get duration for {path}, falling back to simple concat")
+            return _concatenate_simple(safe_paths, output_path)
+        durations.append(d)
+
+    # Build filter_complex for fade transitions
+    # Each video gets fade-out at end (except last) and fade-in at start (except first)
+    filters = []
+    inputs = []
+    for i, (path, d) in enumerate(zip(safe_paths, durations)):
+        fade_filters = []
+        # Fade in at start (except first scene)
+        if i > 0:
+            fade_filters.append(f"fade=t=in:st=0:d={transition_duration}")
+        # Fade out at end (except last scene)
+        if i < len(safe_paths) - 1:
+            fade_out_start = max(0.1, d - transition_duration)
+            fade_filters.append(f"fade=t=out:st={fade_out_start}:d={transition_duration}")
+
+        if fade_filters:
+            filters.append(f"[{i}:v]{','.join(fade_filters)}[v{i}]")
+            inputs.append(f"[v{i}]")
+        else:
+            inputs.append(f"[{i}:v]")
+
+    n = len(safe_paths)
+    filters.append(f"{''.join(inputs)}concat=n={n}:v=1:a=0[outv]")
+    filter_complex = ";".join(filters)
+
+    # Build input args
+    input_args = []
+    for path in safe_paths:
+        input_args.extend(["-i", path])
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        *input_args,
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[outv]",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv420p",
+        output_path,
+    ]
+
+    print(f"\n  Concatenating videos with {transition_duration}s fade transitions...")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode == 0:
+        print(f"[OK] Final video created: {output_path}")
+        return True
+    else:
+        print("[WARN] Transition concat failed, falling back to simple concat:")
+        print(result.stderr[:500])
+        ok = _concatenate_simple(safe_paths, output_path)
+        if ok:
+            print(f"[OK] Final video created (simple): {output_path}")
+        else:
+            print("[ERROR] Error concatenating videos")
+        return ok
 
 
 def merge_video_and_audio(video_path, audio_path, output_path):

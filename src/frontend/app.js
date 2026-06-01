@@ -16,6 +16,15 @@ const videoLengthSelect = document.getElementById('video-length');
 const videoStyleSelect = document.getElementById('video-style');
 const videoQualitySelect = document.getElementById('video-quality');
 const reviewScriptToggle = document.getElementById('review-script-toggle');
+const transitionDurationInput = document.getElementById('transition-duration');
+const transitionTypeSelect = document.getElementById('transition-type');
+const criticMinScoreInput = document.getElementById('critic-min-score');
+const criticMaxRetriesInput = document.getElementById('critic-max-retries');
+const audioFadeDurationInput = document.getElementById('audio-fade-duration');
+const titleCardDurationInput = document.getElementById('title-card-duration');
+const endScreenDurationInput = document.getElementById('end-screen-duration');
+const enableTitleCardToggle = document.getElementById('enable-title-card');
+const enableEndScreenToggle = document.getElementById('enable-end-screen');
 const providerHealthEl = document.getElementById('provider-health');
 const scriptReviewSection = document.getElementById('script-review-section');
 const scriptScenesEl = document.getElementById('script-scenes');
@@ -129,6 +138,15 @@ function getVideoSettings() {
         style: videoStyleSelect.value,
         quality: videoQualitySelect.value,
         review_script: reviewScriptToggle.checked,
+        transition_duration: parseFloat(transitionDurationInput.value) || 0.3,
+        transition_type: transitionTypeSelect.value || 'crossfade',
+        critic_min_score: parseFloat(criticMinScoreInput.value) || 8.0,
+        critic_max_retries: parseInt(criticMaxRetriesInput.value, 10) || 2,
+        audio_fade_duration: parseFloat(audioFadeDurationInput.value) || 0.5,
+        title_card_duration: parseFloat(titleCardDurationInput.value) || 2.5,
+        end_screen_duration: parseFloat(endScreenDurationInput.value) || 3.0,
+        enable_title_card: enableTitleCardToggle.checked,
+        enable_end_screen: enableEndScreenToggle.checked,
     };
 }
 
@@ -621,6 +639,35 @@ async function loadServerConfig() {
         populateSelect(videoStyleSelect, vs.styles || [], vd.style || 'balanced');
         populateSelect(videoQualitySelect, vs.qualities || [], vd.quality || 'standard');
         reviewScriptToggle.checked = vd.review_script !== false;
+
+        const prod = config.production_settings || {};
+        if (prod.transition_duration && transitionDurationInput) {
+            transitionDurationInput.value = vd.transition_duration ?? prod.transition_duration.default ?? 0.3;
+        }
+        if (transitionTypeSelect) {
+            transitionTypeSelect.value = vd.transition_type ?? 'crossfade';
+        }
+        if (prod.critic_min_score && criticMinScoreInput) {
+            criticMinScoreInput.value = vd.critic_min_score ?? prod.critic_min_score.default ?? 8.0;
+        }
+        if (prod.critic_max_retries && criticMaxRetriesInput) {
+            criticMaxRetriesInput.value = vd.critic_max_retries ?? prod.critic_max_retries.default ?? 2;
+        }
+        if (audioFadeDurationInput) {
+            audioFadeDurationInput.value = vd.audio_fade_duration ?? prod.audio_fade_duration?.default ?? 0.5;
+        }
+        if (titleCardDurationInput) {
+            titleCardDurationInput.value = vd.title_card_duration ?? prod.title_card_duration?.default ?? 2.5;
+        }
+        if (endScreenDurationInput) {
+            endScreenDurationInput.value = vd.end_screen_duration ?? prod.end_screen_duration?.default ?? 3.0;
+        }
+        if (enableTitleCardToggle) {
+            enableTitleCardToggle.checked = vd.enable_title_card !== false;
+        }
+        if (enableEndScreenToggle) {
+            enableEndScreenToggle.checked = vd.enable_end_screen !== false;
+        }
 
         await refreshModelControls();
         await refreshTtsVoiceControls();

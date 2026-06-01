@@ -169,6 +169,64 @@ Visual: Show the key visual for this idea."></textarea>
                                         <p id="llm-model-hint" class="form-hint hidden">Uses the default model from .env</p>
                                     </div>
                                 </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="transition-duration" class="form-label">Scene Transition</label>
+                                        <input type="number" id="transition-duration" class="form-select" min="0" max="2" step="0.1" value="0.3" style="width: 100%; padding: 0.6rem 0.75rem;">
+                                        <p class="form-hint">Fade duration between scenes (0 = hard cuts)</p>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="transition-type" class="form-label">Transition Style</label>
+                                        <select id="transition-type" class="form-select">
+                                            <option value="crossfade" selected>Crossfade</option>
+                                            <option value="fade">Fade to black</option>
+                                            <option value="none">Hard cut</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="critic-min-score" class="form-label">Critic Threshold</label>
+                                        <input type="number" id="critic-min-score" class="form-select" min="0" max="10" step="0.5" value="8" style="width: 100%; padding: 0.6rem 0.75rem;">
+                                        <p class="form-hint">Visual QA pass score (higher = stricter)</p>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="critic-max-retries" class="form-label">Critic Retries</label>
+                                        <input type="number" id="critic-max-retries" class="form-select" min="0" max="5" step="1" value="2" style="width: 100%; padding: 0.6rem 0.75rem;">
+                                        <p class="form-hint">How many times critic fixes a scene</p>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="audio-fade-duration" class="form-label">Audio Fade</label>
+                                        <input type="number" id="audio-fade-duration" class="form-select" min="0" max="2" step="0.1" value="0.5" style="width: 100%; padding: 0.6rem 0.75rem;">
+                                        <p class="form-hint">Fade audio in/out (seconds)</p>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="title-card-duration" class="form-label">Title Card Duration</label>
+                                        <input type="number" id="title-card-duration" class="form-select" min="0.5" max="5" step="0.5" value="2.5" style="width: 100%; padding: 0.6rem 0.75rem;">
+                                        <p class="form-hint">Seconds to show topic title at start</p>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="end-screen-duration" class="form-label">End Screen Duration</label>
+                                        <input type="number" id="end-screen-duration" class="form-select" min="0.5" max="5" step="0.5" value="3" style="width: 100%; padding: 0.6rem 0.75rem;">
+                                        <p class="form-hint">Seconds to show end screen</p>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="enable-title-card" class="form-label">Enable Title Card</label>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="enable-title-card" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="enable-end-screen" class="form-label">Enable End Screen</label>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="enable-end-screen" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </details>
 

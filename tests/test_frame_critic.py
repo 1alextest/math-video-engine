@@ -38,7 +38,7 @@ def test_critic_enabled_no():
 
 @patch.dict(os.environ, {}, clear=True)
 def test_critic_min_score_default():
-    assert critic_min_score() == 6.0
+    assert critic_min_score() == 8.0
 
 
 @patch.dict(os.environ, {"CRITIC_MIN_SCORE": "7.5"})
@@ -48,7 +48,7 @@ def test_critic_min_score_override():
 
 @patch.dict(os.environ, {"CRITIC_MIN_SCORE": "bad"})
 def test_critic_min_score_invalid():
-    assert critic_min_score() == 6.0
+    assert critic_min_score() == 8.0
 
 
 @patch.dict(os.environ, {}, clear=True)

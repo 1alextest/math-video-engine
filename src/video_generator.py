@@ -21,6 +21,7 @@ from render_pipeline import (
     compile_scene_from_code,
 )
 from concat_video import concatenate_videos, sanitize_filename, merge_video_and_audio
+from video_assembler import assemble_final_video
 from script_import import parse_import_script
 
 load_dotenv()
@@ -226,40 +227,52 @@ def _render_video_phase(
     if is_job_cancelled(jobs, job_id, jobs_lock):
         raise JobCancelledError("Render cancelled by user")
 
-    # Concatenate
+    # Assemble final video (title card + scenes + transitions + end screen + audio)
     update_job_status(
         job_id,
         progress=80,
         current_step="video",
-        message="Concatenating video scenes...",
+        message="Assembling final video with MoviePy...",
     )
-    silent_video_path = str(media_dir / f"output_silent_{job_id}.mp4")
-    success = concatenate_videos(generated_videos, silent_video_path)
-    if not success:
-        raise Exception("Failed to concatenate videos")
-
-    if is_job_cancelled(jobs, job_id, jobs_lock):
-        raise JobCancelledError("Render cancelled by user")
-
-    # Merge audio
     final_output_path = str(media_dir / f"output_{job_id}.mp4")
-    if audio_path:
+    try:
+        assemble_final_video(
+            scene_paths=generated_videos,
+            output_path=final_output_path,
+            topic=topic,
+            audio_path=audio_path,
+            video_settings=video_settings,
+        )
+    except Exception as exc:
+        print(f"[WARN] MoviePy assembly failed ({exc}), falling back to ffmpeg...")
         update_job_status(
             job_id,
-            progress=90,
+            progress=80,
             current_step="video",
-            message="Merging audio with video...",
+            message="MoviePy failed, falling back to ffmpeg...",
         )
-        merge_success = merge_video_and_audio(
-            video_path=silent_video_path,
-            audio_path=audio_path,
-            output_path=final_output_path,
+        silent_video_path = str(media_dir / f"output_silent_{job_id}.mp4")
+        transition_duration = float(
+            (video_settings or {}).get(
+                "transition_duration", os.getenv("SCENE_TRANSITION_DURATION", "0.3")
+            )
         )
-        if not merge_success:
-            final_output_path = silent_video_path
-    else:
-        if os.path.exists(silent_video_path):
-            os.rename(silent_video_path, final_output_path)
+        success = concatenate_videos(
+            generated_videos, silent_video_path, transition_duration=transition_duration
+        )
+        if not success:
+            raise Exception("Failed to concatenate videos")
+        if audio_path:
+            merge_success = merge_video_and_audio(
+                video_path=silent_video_path,
+                audio_path=audio_path,
+                output_path=final_output_path,
+            )
+            if not merge_success:
+                final_output_path = silent_video_path
+        else:
+            if os.path.exists(silent_video_path):
+                os.rename(silent_video_path, final_output_path)
 
     video_url = f"/media/{os.path.basename(final_output_path)}"
     update_job_status(

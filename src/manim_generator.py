@@ -63,28 +63,38 @@ CONTEXT: This is the FIRST scene of the video.
 CRITICAL AUDIO SYNCHRONIZATION:
 - This scene has an audio narration that lasts EXACTLY {audio_duration:.2f} seconds
 - Your animation MUST last EXACTLY {audio_duration:.2f} seconds (not more, not less)
-- Calculate your animation timings to match this duration:
-  * Use self.wait() strategically to fill the time
-  * Adjust run_time parameters in animations to fit within {audio_duration:.2f}s
-  * The total of all animation run_times + wait times MUST equal {audio_duration:.2f}s
-- Example timing breakdown for {audio_duration:.2f}s:
-  * If you have 3 animations, each could be ~{audio_duration/3:.2f}s
-  * Include small waits between animations for better pacing
+- TIMING STRATEGY (beat-based, not naive division):
+  1. Read the narration text carefully. Identify the KEY BEATS (moments where a new concept, term, or visual element is introduced).
+  2. Time each animation so the visual element appears AT or JUST BEFORE its corresponding narrative beat — NOT spread evenly.
+  3. Use self.wait() at NATURAL PAUSES in the narration (after a key reveal, before a transition) — never as filler.
+  4. Important reveals should use run_time=1.5-2.5s so the viewer can absorb them.
+  5. Quick transitions between related elements should use run_time=0.5-1.0s.
+  6. The total of all animation run_times + wait times MUST equal {audio_duration:.2f}s.
+- Example timing for a 10s narration with 3 beats:
+  * Beat 1 (0s): "The derivative tells us the slope" -> Show title + equation (run_time=2s)
+  * Beat 2 (3.5s): "At this point, the slope is zero" -> Highlight the point (run_time=1.5s)
+  * Beat 3 (6s): "So we have a maximum" -> Show result label (run_time=1.5s)
+  * Wait 1s at the end for the viewer to absorb
 """
     else:
         duration_section = f"""
 TIMING GUIDANCE:
 - This scene should last approximately {scene_duration} seconds
-- Use short run_time in animations (0.5-1.5 seconds)
-- Minimize use of self.wait() (maximum 0.5-1 second)
+- Use beat-based timing: match animation moments to narrative beats
+- Important reveals: run_time=1.5-2.5s; quick transitions: run_time=0.5-1.0s
+- Minimize use of self.wait() (maximum 0.5-1 second) unless at a natural pause
 - Total animation time should match ~{scene_duration}s
 """
+
+    quality_guidance = video_settings.get("quality_preset", {}).get("prompt_guidance", "")
+    quality_block = f"\nQUALITY GUIDANCE:\n{quality_guidance}\n" if quality_guidance else ""
 
     style_section = f"""
 VISUAL STYLE GUIDE (maintain consistency with other scenes):
 {style_guide}
 - Use self.camera.background_color = "#1a1a2e" at the start of construct()
 - Match fonts, colors, and layout from previous scenes when context is provided
+{quality_block}
 """
 
     prompt = f"""{context_section}
@@ -197,10 +207,17 @@ self.play(Write(part2))
 RECOMMENDED ANIMATIONS:
 - Text: Write(), FadeIn(), AddTextLetterByLetter()
 - Shapes: Create(), DrawBorderThenFill(), GrowFromCenter()
-- Transformations: Transform(), ReplacementTransform(), TransformFromCopy()
+- Transformations: Transform(), ReplacementTransform(), TransformFromCopy(), TransformMatchingShapes()
+- Emphasis & attention: Circumscribe(), Indicate(), Flash(), Wiggle(), ShowPassingFlash()
 - Movement: obj.animate.shift(), obj.animate.move_to(), obj.animate.scale()
 - Cleanup: FadeOut(), self.clear(), self.remove()
 - Groups: VGroup to group objects
+
+EASING & TIMING (make motion feel alive, not robotic):
+- Use rate_func=smooth for natural acceleration/deceleration
+- Use rate_func=run_time=2 for important reveals, rate_func=run_time=0.5 for quick transitions
+- Animate elements in sequence using lagged_start or successive self.play() calls
+- Let important concepts linger on screen; don't rush everything equally
 
 CODE STRUCTURE:
 ```python
