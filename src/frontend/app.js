@@ -26,6 +26,7 @@ const endScreenDurationInput = document.getElementById('end-screen-duration');
 const enableTitleCardToggle = document.getElementById('enable-title-card');
 const enableEndScreenToggle = document.getElementById('enable-end-screen');
 const providerHealthEl = document.getElementById('provider-health');
+const setupBannerEl = document.getElementById('setup-banner');
 const scriptReviewSection = document.getElementById('script-review-section');
 const scriptScenesEl = document.getElementById('script-scenes');
 const approveScriptBtn = document.getElementById('approve-script-btn');
@@ -513,6 +514,43 @@ if (copyPromptBtn) {
     copyPromptBtn.addEventListener('click', copyPromptTemplate);
 }
 
+function renderSetupBanner(config) {
+    if (!setupBannerEl) {
+        return;
+    }
+    const llmReady = (config.configured_llm_providers || []).length > 0;
+    const ttsNeeded = ttsToggle.checked;
+    const ttsReady = !ttsNeeded || (config.configured_tts_providers || []).length > 0;
+
+    if (llmReady && ttsReady) {
+        setupBannerEl.classList.add('hidden');
+        setupBannerEl.innerHTML = '';
+        return;
+    }
+
+    const lines = [];
+    if (!config.env_file_found) {
+        lines.push(
+            'No .env file found. Restart the server after creating one from .env.example in the project root.',
+        );
+    } else if (!llmReady) {
+        lines.push(
+            'Open .env in the project root and set at least one LLM API key (e.g. OPENAI_API_KEY or OLLAMA_API_KEY). Restart the server when done.',
+        );
+    }
+    if (ttsNeeded && !ttsReady) {
+        lines.push(
+            'TTS is enabled but no TTS provider is configured. Add ELEVENLABS_API_KEY or OpenAI credentials, or turn off Enable TTS.',
+        );
+    }
+
+    setupBannerEl.classList.remove('hidden');
+    setupBannerEl.innerHTML = [
+        '<strong>Setup required</strong>',
+        ...lines.map((line) => `<p>${escapeHtml(line)}</p>`),
+    ].join('');
+}
+
 async function checkProviderHealth() {
     clearTimeout(healthCheckTimer);
     healthCheckTimer = setTimeout(async () => {
@@ -658,6 +696,7 @@ async function loadServerConfig() {
 
         const config = await response.json();
         serverConfig = config;
+        renderSetupBanner(config);
         markProviderOptions(llmSelect, config.configured_llm_providers || []);
         markProviderOptions(ttsSelect, config.configured_tts_providers || []);
 
@@ -724,6 +763,9 @@ function syncTtsControls() {
 }
 
 ttsToggle.addEventListener('change', () => {
+    if (serverConfig) {
+        renderSetupBanner(serverConfig);
+    }
     syncTtsControls();
     checkProviderHealth();
 });

@@ -4,6 +4,11 @@ Set-Location $PSScriptRoot
 
 Write-Host "=== Topic2Manim Restart ===" -ForegroundColor Cyan
 
+if (-not (Test-Path ".env") -and (Test-Path ".env.example")) {
+    Copy-Item ".env.example" ".env"
+    Write-Host "Created .env from .env.example — add your API keys, then re-run this script." -ForegroundColor Yellow
+}
+
 function Invoke-DockerWithTimeout {
     param(
         [string]$Label,

@@ -272,6 +272,34 @@ def test_preview_code_compilation_error(mock_compile, client):
     assert "syntax error" in r.get_json()["error"].lower()
 
 
+@patch("main.start_video_generation")
+def test_batch_create(mock_start, client):
+    mock_start.side_effect = ["job-1", "job-2"]
+    r = client.post(
+        "/api/batch",
+        json={
+            "items": [{"topic": "A"}, {"topic": "B"}],
+            "llm_provider": "openai",
+            "enable_tts": False,
+        },
+    )
+    assert r.status_code == 202
+    data = r.get_json()
+    assert data["total"] == 2
+    assert len(data["job_ids"]) == 2
+    assert data["status"] == "running"
+
+
+def test_batch_empty_items(client):
+    r = client.post("/api/batch", json={"items": []})
+    assert r.status_code == 400
+
+
+def test_batch_get_not_found(client):
+    r = client.get("/api/batch/nonexistent")
+    assert r.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # Static / root
 # ---------------------------------------------------------------------------

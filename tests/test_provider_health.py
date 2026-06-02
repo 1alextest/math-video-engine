@@ -104,6 +104,16 @@ def test_check_tts_exception(mock_setup):
 # ---------------------------------------------------------------------------
 # check_providers (aggregate)
 # ---------------------------------------------------------------------------
+@patch("provider_health.get_configured_llm_providers", return_value=[])
+@patch("provider_health.check_tts_provider")
+def test_check_providers_auto_no_llm_configured(mock_tts, _mock_get):
+    mock_tts.return_value = {"ok": False, "message": "no tts"}
+    result = check_providers()
+    assert result["ready"] is False
+    assert result["llm"]["setup"]["ok"] is False
+    assert ".env" in result["llm"]["setup"]["message"]
+
+
 @patch("provider_health.get_configured_llm_providers", return_value=["ollama"])
 @patch("provider_health.check_llm_provider")
 @patch("provider_health.check_tts_provider")

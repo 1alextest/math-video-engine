@@ -148,6 +148,21 @@ body {
     color: #666;
 }
 
+.setup-banner {
+    margin: 12px 0 4px;
+    padding: 12px 14px;
+    border-radius: 6px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.setup-banner strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
 .provider-health {
     margin: 12px 0 4px;
     padding: 12px 14px;

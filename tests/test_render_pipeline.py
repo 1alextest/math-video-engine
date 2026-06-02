@@ -176,3 +176,54 @@ def test_build_context_from_checkpoint_dict_code():
     scene = {"text": "hello"}
     ctx = _build_context_from_checkpoint(scene, {"content": "code"})
     assert ctx["code"] == "code"
+
+
+# ---------------------------------------------------------------------------
+# generate_scene_code custom code path
+# ---------------------------------------------------------------------------
+@patch("render_pipeline.generate_manim_code")
+def test_generate_scene_code_uses_custom_code(mock_generate_manim_code):
+    from render_pipeline import generate_scene_code
+
+    scene_data = {
+        "text": "hello",
+        "animation": "fade",
+        "code": "from manim import *\nclass CustomScene(Scene): pass",
+        "code_class": "CustomScene",
+    }
+    result = generate_scene_code(
+        llm_client=None,
+        provider="openai",
+        model="gpt-4o",
+        scene_data=scene_data,
+        index=1,
+        style_registry={},
+        previous_context=None,
+        audio_duration=10,
+        video_settings={},
+    )
+    assert result["content"] == scene_data["code"]
+    assert result["class_name"] == scene_data["code_class"]
+    mock_generate_manim_code.assert_not_called()
+
+
+@patch("render_pipeline.generate_manim_code")
+def test_generate_scene_code_falls_back_to_llm(mock_generate_manim_code):
+    from render_pipeline import generate_scene_code
+
+    mock_generate_manim_code.return_value = {"content": "generated", "class_name": "GeneratedScene"}
+    scene_data = {"text": "hello", "animation": "fade"}
+    result = generate_scene_code(
+        llm_client=MagicMock(),
+        provider="openai",
+        model="gpt-4o",
+        scene_data=scene_data,
+        index=1,
+        style_registry={},
+        previous_context=None,
+        audio_duration=10,
+        video_settings={},
+    )
+    assert result["content"] == "generated"
+    assert result["class_name"] == "GeneratedScene"
+    mock_generate_manim_code.assert_called_once()

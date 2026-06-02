@@ -224,6 +224,14 @@ def generate_scene_code(
     video_settings,
 ):
     scene_data = enrich_scene_events(scene_data)
+
+    # Use custom Manim code if user provided it in the script editor
+    custom_code = scene_data.get("code", "").strip()
+    custom_class = scene_data.get("code_class", "").strip()
+    if custom_code and custom_class:
+        print(f"[Scene {index}] Using custom Manim code from script editor")
+        return {"content": custom_code, "class_name": custom_class}
+
     registry_prompt = format_registry_for_prompt(style_registry)
     events_prompt = format_events_for_prompt(scene_data.get("visual_events"))
 

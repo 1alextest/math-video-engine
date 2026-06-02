@@ -79,6 +79,11 @@ def check_providers(
 
     if llm_provider in (None, "", "auto"):
         configured = get_configured_llm_providers()
+        if not configured:
+            results["llm"]["setup"] = _status(
+                False,
+                "No LLM configured — add an API key to .env (project root), then restart the server",
+            )
         for provider_id in configured:
             results["llm"][provider_id] = check_llm_provider(provider_id)
     else:
