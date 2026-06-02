@@ -38,6 +38,7 @@ const progressFill = document.getElementById('progress-fill');
 const progressLog = document.getElementById('progress-log');
 const resultVideo = document.getElementById('result-video');
 const downloadBtn = document.getElementById('download-btn');
+const htmlPlayerBtn = document.getElementById('html-player-btn');
 const inputModeTabs = document.querySelectorAll('.input-mode-tab');
 const topicModePanel = document.getElementById('topic-mode-panel');
 const importModePanel = document.getElementById('import-mode-panel');
@@ -315,6 +316,36 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
 }
+
+function showCodePreviewModal(videoUrl, className) {
+    const modal = document.getElementById('code-preview-modal');
+    const video = document.getElementById('code-preview-video');
+    if (!modal || !video) return;
+    video.src = videoUrl;
+    video.load();
+    modal.classList.remove('hidden');
+}
+
+function hideCodePreviewModal() {
+    const modal = document.getElementById('code-preview-modal');
+    const video = document.getElementById('code-preview-video');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    if (video) {
+        video.pause();
+        video.src = '';
+    }
+}
+
+const codePreviewCloseBtn = document.getElementById('code-preview-close');
+if (codePreviewCloseBtn) {
+    codePreviewCloseBtn.addEventListener('click', hideCodePreviewModal);
+}
+document.getElementById('code-preview-modal')?.addEventListener('click', (e) => {
+    if (e.target.classList.contains('code-preview-backdrop')) {
+        hideCodePreviewModal();
+    }
+});
 
 function setInputMode(mode) {
     inputMode = mode;
@@ -819,7 +850,7 @@ async function attachToJob(jobId) {
         if (data.status === 'awaiting_review') {
             showScriptReview(data.script || []);
         } else if (data.status === 'completed' && data.video_url) {
-            showResult(data.video_url);
+            showResult(data.video_url, { htmlUrl: data.html_url });
             if (data.script?.length) {
                 scriptReviewSection.classList.remove('hidden');
                 renderScriptEditor(data.script, true);
@@ -992,7 +1023,7 @@ function startProgressPolling(options = {}) {
                 if (!isPreview) {
                     scriptReviewSection.classList.add('hidden');
                 }
-                showResult(data.video_url, { preview: isPreview });
+                showResult(data.video_url, { preview: isPreview, htmlUrl: data.html_url });
                 loadRecentJobs();
             } else if (data.status === 'failed' || data.status === 'interrupted' || data.status === 'cancelled') {
                 stopProgressPolling();
@@ -1148,6 +1179,14 @@ function collectScriptFromEditor() {
         if (titleInput && titleInput.value.trim()) {
             scene.title = titleInput.value.trim();
         }
+        const codeInput = card.querySelector('.scene-code-area');
+        const classInput = card.querySelector('.scene-code-class');
+        if (codeInput && codeInput.value.trim()) {
+            scene.code = codeInput.value.trim();
+        }
+        if (classInput && classInput.value.trim()) {
+            scene.code_class = classInput.value.trim();
+        }
         const events = (card.dataset.visualEvents || '').split(',').map((e) => e.trim()).filter(Boolean);
         if (events.length) scene.visual_events = events;
         return scene;
@@ -1218,6 +1257,19 @@ function addSceneCard(scene = { text: '', animation: '' }, sceneNumber = null, a
         <textarea class="scene-text" placeholder="What the narrator says...">${escapeHtml(scene.text)}</textarea>
         <label>Animation</label>
         <textarea class="scene-animation" placeholder="What appears on screen...">${escapeHtml(scene.animation)}</textarea>
+        <div class="scene-code-section">
+            <button type="button" class="scene-code-toggle" data-expanded="false">Manim Code ▼</button>
+            <div class="scene-code-panel hidden">
+                <label>Class Name</label>
+                <input type="text" class="scene-code-class" placeholder="MyScene" value="${escapeHtml(scene.code_class || '')}" />
+                <label>Manim Python Code</label>
+                <textarea class="scene-code-area" placeholder="from manim import *\n\nclass MyScene(Scene):\n    def construct(self):\n        ...">${escapeHtml(scene.code || '')}</textarea>
+                <div class="scene-code-actions">
+                    <button type="button" class="scene-preview-btn">▶ Preview</button>
+                    <span class="scene-code-status"></span>
+                </div>
+            </div>
+        </div>
     `;
     const eventsWrap = card.querySelector('.scene-events-wrap');
     eventsWrap.innerHTML = '<label>Visual events (click to toggle)</label>';
@@ -1259,6 +1311,61 @@ function addSceneCard(scene = { text: '', animation: '' }, sceneNumber = null, a
             }
         });
     }
+
+    // Manim code toggle
+    const codeToggle = card.querySelector('.scene-code-toggle');
+    const codePanel = card.querySelector('.scene-code-panel');
+    if (codeToggle && codePanel) {
+        codeToggle.addEventListener('click', () => {
+            const expanded = codeToggle.dataset.expanded === 'true';
+            codeToggle.dataset.expanded = String(!expanded);
+            codePanel.classList.toggle('hidden');
+            codeToggle.textContent = expanded ? 'Manim Code ▼' : 'Manim Code ▲';
+        });
+    }
+
+    // Preview code button
+    const previewBtn = card.querySelector('.scene-preview-btn');
+    const codeStatus = card.querySelector('.scene-code-status');
+    if (previewBtn) {
+        previewBtn.addEventListener('click', async () => {
+            const code = card.querySelector('.scene-code-area')?.value.trim();
+            const className = card.querySelector('.scene-code-class')?.value.trim();
+            if (!code) {
+                codeStatus.textContent = 'Paste Manim code first';
+                return;
+            }
+            if (!className) {
+                codeStatus.textContent = 'Enter class name';
+                return;
+            }
+            previewBtn.disabled = true;
+            codeStatus.textContent = 'Compiling…';
+            try {
+                const topic = importTitleInput.value.trim() || topicInput.value.trim() || 'Preview';
+                const response = await fetch(`${API_BASE_URL}/api/preview-code`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, class_name: className, topic, quality: 'preview' }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.error || `Compilation failed (${response.status})`);
+                }
+                if (data.video_url) {
+                    showCodePreviewModal(data.video_url, className);
+                    codeStatus.textContent = '';
+                } else {
+                    throw new Error('No video returned');
+                }
+            } catch (err) {
+                codeStatus.textContent = err.message;
+            } finally {
+                previewBtn.disabled = false;
+            }
+        });
+    }
+
     scriptScenesEl.appendChild(card);
 }
 
@@ -1432,6 +1539,7 @@ function resetForm() {
 // Show result
 function showResult(videoUrl, options = {}) {
     const isPreview = options.preview;
+    const htmlUrl = options.htmlUrl;
     addLog(isPreview ? '✓ Scene preview ready!' : '✓ Video generation completed!', 'success');
 
     updateProgressBar(100);
@@ -1450,6 +1558,14 @@ function showResult(videoUrl, options = {}) {
         }
         resultVideo.src = videoUrl;
         downloadBtn.href = videoUrl;
+        if (htmlPlayerBtn) {
+            if (htmlUrl) {
+                htmlPlayerBtn.href = htmlUrl;
+                htmlPlayerBtn.classList.remove('hidden');
+            } else {
+                htmlPlayerBtn.classList.add('hidden');
+            }
+        }
 
         resultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 

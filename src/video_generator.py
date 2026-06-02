@@ -22,6 +22,7 @@ from render_pipeline import (
 )
 from concat_video import concatenate_videos, sanitize_filename, merge_video_and_audio
 from video_assembler import assemble_final_video
+from video_html_wrapper import generate_video_html
 from script_import import parse_import_script
 
 load_dotenv()
@@ -90,6 +91,7 @@ def update_job_status(
     message=None,
     error=None,
     video_url=None,
+    html_url=None,
     scenes_total=None,
     scenes_done=None,
     scene_result=None,
@@ -110,6 +112,8 @@ def update_job_status(
             job["error"] = error
         if video_url is not None:
             job["video_url"] = video_url
+        if html_url is not None:
+            job["html_url"] = html_url
         if scenes_total is not None:
             job["scenes_total"] = scenes_total
         if scenes_done is not None:
@@ -274,7 +278,26 @@ def _render_video_phase(
             if os.path.exists(silent_video_path):
                 os.rename(silent_video_path, final_output_path)
 
+    # Generate interactive HTML wrapper
+    html_path = str(media_dir / f"output_{job_id}.html")
+    try:
+        title_dur = float(video_settings.get("title_card_duration", 0)) if video_settings else 0
+        end_dur = float(video_settings.get("end_screen_duration", 0)) if video_settings else 0
+        generate_video_html(
+            video_path=final_output_path,
+            output_html_path=html_path,
+            topic=topic,
+            scenes=video_data,
+            title_duration=title_dur,
+            end_duration=end_dur,
+            scene_video_paths=generated_videos,
+        )
+    except Exception as exc:
+        print(f"[WARN] HTML wrapper generation failed: {exc}")
+        html_path = ""
+
     video_url = f"/media/{os.path.basename(final_output_path)}"
+    html_url = f"/media/{os.path.basename(html_path)}" if html_path else ""
     update_job_status(
         job_id,
         status="completed",
@@ -282,6 +305,7 @@ def _render_video_phase(
         current_step="video",
         message="Video generation completed!",
         video_url=video_url,
+        html_url=html_url,
     )
 
 

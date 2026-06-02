@@ -448,6 +448,65 @@ body {
     margin-bottom: 8px;
 }
 
+.scene-code-section {
+    margin-top: 8px;
+    border-top: 1px dashed #ddd;
+    padding-top: 8px;
+}
+.scene-code-toggle {
+    background: none;
+    border: none;
+    color: #6366f1;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 6px;
+}
+.scene-code-toggle:hover {
+    text-decoration: underline;
+}
+.scene-code-area {
+    width: 100%;
+    min-height: 120px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: #1e1e2e;
+    color: #e2e8f0;
+    resize: vertical;
+    margin-bottom: 6px;
+}
+.scene-code-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.scene-preview-btn {
+    background: #6366f1;
+    color: #fff;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.scene-preview-btn:hover {
+    background: #4f46e5;
+}
+.scene-preview-btn:disabled {
+    background: #a5b4fc;
+    cursor: not-allowed;
+}
+.scene-code-status {
+    font-size: 12px;
+    color: #666;
+}
+
 /* Toggle */
 .toggle-switch {
     position: relative;
@@ -985,4 +1044,54 @@ body {
     font-size: 11px;
     color: #b91c1c;
     margin-top: 2px;
+}
+
+/* Code Preview Modal */
+.code-preview-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.code-preview-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+}
+.code-preview-content {
+    position: relative;
+    background: #0f0f1a;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 720px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.code-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #333;
+    color: #e2e8f0;
+    font-size: 14px;
+}
+.code-preview-close {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 22px;
+    cursor: pointer;
+    line-height: 1;
+}
+.code-preview-close:hover {
+    color: #e2e8f0;
+}
+.code-preview-video {
+    width: 100%;
+    display: block;
+    background: #000;
+    max-height: 60vh;
 }

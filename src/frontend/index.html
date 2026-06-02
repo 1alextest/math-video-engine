@@ -8,10 +8,6 @@
     <meta name="description"
         content="Transform any topic into professional educational videos with AI-powered animations">
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
-        rel="stylesheet">
 </head>
 
 <body>
@@ -350,6 +346,14 @@ Visual: Show the key visual for this idea."></textarea>
                                 </svg>
                                 Download Video
                             </a>
+                            <a id="html-player-btn" class="btn-outline hidden" target="_blank">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                                    <line x1="8" y1="21" x2="16" y2="21" />
+                                    <line x1="12" y1="17" x2="12" y2="21" />
+                                </svg>
+                                Open Interactive Player
+                            </a>
                             <button class="btn-outline" onclick="location.reload()">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
@@ -508,6 +512,18 @@ Visual: Show the key visual for this idea."></textarea>
             </div>
         </div>
     </footer>
+
+    <!-- Code Preview Modal -->
+    <div id="code-preview-modal" class="code-preview-modal hidden">
+        <div class="code-preview-backdrop"></div>
+        <div class="code-preview-content">
+            <div class="code-preview-header">
+                <strong>Code Preview</strong>
+                <button type="button" class="code-preview-close" id="code-preview-close">&times;</button>
+            </div>
+            <video id="code-preview-video" class="code-preview-video" controls></video>
+        </div>
+    </div>
 
     <script src="/static/app.js"></script>
 </body>

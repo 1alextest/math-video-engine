@@ -101,7 +101,7 @@ def test_providers_health_get(mock_check, client):
 def test_providers_health_post(mock_check, client):
     mock_check.return_value = {"ready": False, "llm": {}, "tts": None}
     r = client.post("/api/providers/health", json={"llm_provider": "openai"})
-    assert r.status_code == 503
+    assert r.status_code == 200
     assert not r.get_json()["ready"]
 
 
@@ -235,6 +235,41 @@ def test_preview_scene_missing_script(client):
     r = client.post("/api/preview-scene", json={})
     assert r.status_code == 400
     assert "script" in r.get_json()["error"]
+
+
+def test_preview_code_missing_fields(client):
+    r = client.post("/api/preview-code", json={})
+    assert r.status_code == 400
+    assert "code" in r.get_json()["error"]
+
+
+def test_preview_code_invalid_class_name(client):
+    r = client.post("/api/preview-code", json={"code": "print(1)", "class_name": "123Bad"})
+    assert r.status_code == 400
+    assert "class name" in r.get_json()["error"].lower()
+
+
+@patch("main.compile_video")
+def test_preview_code_success(mock_compile, client):
+    mock_compile.return_value = ("media/videos/preview_test/pql/MyScene.mp4", None)
+    r = client.post(
+        "/api/preview-code",
+        json={"code": "from manim import *\nclass MyScene(Scene): pass", "class_name": "MyScene", "topic": "Test"},
+    )
+    assert r.status_code == 200
+    assert r.get_json()["video_url"] == "media/videos/preview_test/pql/MyScene.mp4"
+    mock_compile.assert_called_once()
+
+
+@patch("main.compile_video")
+def test_preview_code_compilation_error(mock_compile, client):
+    mock_compile.return_value = (None, "Syntax error on line 3")
+    r = client.post(
+        "/api/preview-code",
+        json={"code": "bad code", "class_name": "MyScene"},
+    )
+    assert r.status_code == 500
+    assert "syntax error" in r.get_json()["error"].lower()
 
 
 # ---------------------------------------------------------------------------

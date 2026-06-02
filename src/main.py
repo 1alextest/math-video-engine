@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
+import re
 import sys
+import uuid
 from pathlib import Path
 
 # Add parent directory to path to enable imports
@@ -20,6 +22,7 @@ from video_generator import (
     retry_scene_render,
     start_scene_preview,
 )
+from concat_video import compile_video, sanitize_filename
 from tts_generator import (
     get_available_tts_providers,
     get_all_tts_providers,
@@ -335,8 +338,8 @@ def providers_health():
         tts_voice=data.get("tts_voice"),
         enable_tts=str(data.get("enable_tts", "true")).lower() not in ("0", "false", "no"),
     )
-    status_code = 200 if results.get("ready") else 503
-    return jsonify(results), status_code
+    # Always 200 when the check ran; use JSON "ready" for provider availability.
+    return jsonify(results), 200
 
 
 @app.route("/api/jobs/<job_id>/script", methods=["PUT"])
@@ -440,6 +443,54 @@ def preview_scene():
             ),
             202,
         )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/preview-code", methods=["POST"])
+def preview_code():
+    """Compile raw Manim code and return the video path.
+
+    Accepts:
+        - code: str (raw Manim Python code)
+        - class_name: str (scene class name)
+        - topic: str (optional, used for file naming)
+        - quality: str (optional, default "preview")
+    Returns:
+        - video_url: str (relative path to MP4)
+        - Or error
+    """
+    try:
+        data = request.get_json() or {}
+        code = data.get("code", "").strip()
+        class_name = data.get("class_name", "").strip()
+        topic = (data.get("topic") or "preview").strip()
+        quality = data.get("quality", "preview")
+
+        if not code:
+            return jsonify({"error": "code is required"}), 400
+        if not class_name:
+            return jsonify({"error": "class_name is required"}), 400
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", class_name):
+            return jsonify({"error": f"Invalid class name: {class_name}"}), 400
+
+        topic_slug = sanitize_filename(topic) or "preview"
+        # Write to a temp file inside content/ so _safe_project_path accepts it
+        content_dir = Path("content")
+        content_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f"preview_{topic_slug}_{uuid.uuid4().hex[:8]}.py"
+        file_path = content_dir / file_name
+        file_path.write_text(code, encoding="utf-8")
+
+        video_path, error = compile_video(
+            str(file_path), class_name, topic_slug, index=0, quality=quality
+        )
+        if error:
+            return jsonify({"error": error}), 500
+
+        return jsonify({"video_url": video_path})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
