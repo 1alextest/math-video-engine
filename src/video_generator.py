@@ -28,22 +28,18 @@ from script_import import parse_import_script
 load_dotenv()
 
 
-def get_available_llm_providers():
-    """Return LLM providers that are currently configured (have API keys)."""
-    return get_configured_llm_providers()
-
-
 # Global state (in production, use Redis or a database)
 jobs = {}
 jobs_lock = threading.RLock()
 _job_threads = {}
 
-_JOBS_DIR = Path(__file__).parent.parent / "content" / "jobs"
-_JOBS_DIR.mkdir(parents=True, exist_ok=True)
+# Import db after load_dotenv so env vars are available
+import db
 
 
-def _job_record_path(job_id):
-    return _JOBS_DIR / f"{job_id}.json"
+def get_available_llm_providers():
+    """Return LLM providers that are currently configured (have API keys)."""
+    return get_configured_llm_providers()
 
 
 def _persist_job(job_id, checkpoint=None):
@@ -51,23 +47,11 @@ def _persist_job(job_id, checkpoint=None):
         data = dict(jobs.get(job_id, {}))
     if checkpoint is not None:
         data["render_checkpoint"] = checkpoint
-    path = _job_record_path(job_id)
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2, default=str)
-    except Exception as exc:
-        print(f"[WARN] Could not persist job {job_id}: {exc}")
+    db.persist_job(job_id, data)
 
 
 def _load_job_from_disk(job_id):
-    path = _job_record_path(job_id)
-    if not path.exists():
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
+    return db.load_job(job_id)
 
 
 def get_job(job_id):
@@ -78,10 +62,13 @@ def get_job(job_id):
 def _ensure_job_record(job_id):
     with jobs_lock:
         if job_id not in jobs:
-            loaded = _load_job_from_disk(job_id)
+            loaded = db.load_job(job_id)
             if loaded:
                 jobs[job_id] = loaded
 
+
+# On startup, sync recent jobs from Supabase/local disk into memory
+db.sync_jobs_dict_on_startup(jobs, jobs_lock)
 
 def update_job_status(
     job_id,
@@ -650,12 +637,7 @@ def _resume_worker(job_id):
 
 def list_jobs(limit=20):
     """List recent jobs for resume/history UI."""
-    with jobs_lock:
-        sorted_jobs = sorted(
-            jobs.values(),
-            key=lambda j: j.get("updated_at", ""),
-            reverse=True,
-        )
+    recent = db.list_recent_jobs(limit=limit)
     return [
         {
             "job_id": j.get("job_id"),
@@ -665,7 +647,7 @@ def list_jobs(limit=20):
             "created_at": j.get("created_at"),
             "updated_at": j.get("updated_at"),
         }
-        for j in sorted_jobs[:limit]
+        for j in recent
     ]
 
 
