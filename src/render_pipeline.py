@@ -250,6 +250,7 @@ def generate_scene_code(
         audio_duration=audio_duration,
         video_settings=video_settings,
         visual_events=scene_data.get("visual_events"),
+        scene_style=scene_data.get("style"),
     )
 
 

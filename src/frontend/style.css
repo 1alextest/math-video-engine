@@ -463,11 +463,13 @@ body {
     margin-bottom: 8px;
 }
 
+.scene-style-section,
 .scene-code-section {
     margin-top: 8px;
     border-top: 1px dashed #ddd;
     padding-top: 8px;
 }
+.scene-style-toggle,
 .scene-code-toggle {
     background: none;
     border: none;
@@ -891,6 +893,51 @@ body {
     font-size: 13px;
 }
 
+/* Script Linter */
+.script-linter-panel {
+    margin: 12px 0;
+    padding: 12px 14px;
+    background: #f8f9fb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 13px;
+}
+.linter-metrics {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.linter-metric {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.linter-metric-value {
+    font-weight: 700;
+    font-size: 15px;
+}
+.linter-metric-value.good { color: #059669; }
+.linter-metric-value.warn { color: #d97706; }
+.linter-metric-value.bad { color: #dc2626; }
+.linter-metric-label {
+    color: #666;
+    font-size: 11px;
+}
+.linter-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.linter-suggestion {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: #fffbeb;
+    border-left: 2px solid #f59e0b;
+    color: #92400e;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .hero-title {
@@ -1130,6 +1177,90 @@ body {
 .batch-job-status.completed { color: #059669; }
 .batch-job-status.failed { color: #dc2626; }
 .batch-job-status.running { color: #6366f1; }
+
+/* Range input */
+input[type="range"] {
+    width: 100%;
+    accent-color: #4a5fff;
+}
+
+/* Metrics panel */
+.metrics-panel,
+.thumbnails-panel {
+    margin-top: 24px;
+    padding: 16px;
+    background: #f8f9fb;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+.metrics-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #333;
+}
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.metric-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 10px;
+    text-align: center;
+}
+.metric-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #4a5fff;
+}
+.metric-label {
+    font-size: 11px;
+    color: #666;
+    margin-top: 4px;
+}
+.metric-card.good .metric-value { color: #059669; }
+.metric-card.warn .metric-value { color: #d97706; }
+.metric-card.bad .metric-value { color: #dc2626; }
+.metrics-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.metrics-suggestions .suggestion {
+    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: #fffbeb;
+    border-left: 3px solid #f59e0b;
+    color: #92400e;
+}
+
+/* Thumbnails */
+.timeline-image {
+    width: 100%;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    border: 1px solid #e5e7eb;
+}
+.thumbnails-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+}
+.thumb-item {
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    background: white;
+}
+.thumb-item img {
+    width: 100%;
+    display: block;
+}
 
 /* Code Preview Modal */
 .code-preview-modal {

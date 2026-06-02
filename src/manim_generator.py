@@ -20,6 +20,7 @@ def generate_manim_code(
     video_settings=None,
     visual_events=None,
     max_retries=3,
+    scene_style=None,
 ):
     """Generates Manim code using the LLM with style registry, visual events, and retries."""
     from video_settings import normalize_video_settings
@@ -92,12 +93,39 @@ TIMING GUIDANCE:
     quality_guidance = video_settings.get("quality_preset", {}).get("prompt_guidance", "")
     quality_block = f"\nQUALITY GUIDANCE:\n{quality_guidance}\n" if quality_guidance else ""
 
+    # Scene style overrides
+    style_override_section = ""
+    if scene_style:
+        palette = scene_style.get("palette")
+        speed = scene_style.get("speed")
+        font_size = scene_style.get("font_size")
+        overrides = []
+        if palette == "warm":
+            overrides.append("Use a WARM palette: #FF6B6B (coral), #FFD93D (yellow), #F4A261 (orange), #E76F51 (terracotta). Background stays #1a1a2e.")
+        elif palette == "cool":
+            overrides.append("Use a COOL palette: #58C4DD (cyan), #4ECDC4 (teal), #45B7D1 (sky), #96CEB4 (sage). Background stays #1a1a2e.")
+        elif palette == "monochrome":
+            overrides.append("Use a MONOCHROME palette: #E2E8F0 (white), #94A3B8 (light gray), #475569 (medium gray), #1E293B (dark gray). Background stays #1a1a2e.")
+        elif palette == "vibrant":
+            overrides.append("Use a VIBRANT high-contrast palette: #FF006E (magenta), #FB5607 (orange), #8338EC (purple), #06FFB4 (neon green). Background stays #1a1a2e.")
+        elif palette == "pastel":
+            overrides.append("Use a PASTEL palette: #FFB3BA (pink), #FFDFBA (peach), #FFFFBA (lemon), #BAFFC9 (mint), #BAE1FF (baby blue). Background stays #1a1a2e.")
+        if speed == "slow":
+            overrides.append("ANIMATION SPEED: Use 2× longer run_time values. Reveals: 3.0-4.0s. Transitions: 1.0-1.5s. Add extra self.wait(1.5) after key moments.")
+        elif speed == "fast":
+            overrides.append("ANIMATION SPEED: Use 0.5× shorter run_time values. Reveals: 0.8-1.2s. Transitions: 0.3-0.5s. Keep waits minimal (0.5s).")
+        if font_size:
+            overrides.append(f"FONT SIZE OVERRIDE: Base all text sizes around {font_size}px. Titles: {font_size + 12}px, Headers: {font_size + 6}px, Body: {font_size}px, Labels: {font_size - 6}px.")
+        if overrides:
+            style_override_section = "\nSCENE STYLE OVERRIDES (apply these to THIS scene only):\n" + "\n".join(f"- {o}" for o in overrides) + "\n"
+
     style_section = f"""
 VISUAL STYLE GUIDE (maintain consistency with other scenes):
 {style_guide}
 - Use self.camera.background_color = "#1a1a2e" at the start of construct()
 - Match fonts, colors, and layout from previous scenes when context is provided
 {quality_block}
+{style_override_section}
 
 COLOR PALETTE SYSTEM (use ONLY these 4-5 colors per video):
 - Background: "#1a1a2e" (very dark blue-purple)

@@ -286,6 +286,41 @@ One topic per line — each becomes a separate video."></textarea>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
+                            <div class="form-group">
+                                <label for="captions-toggle" class="form-label">Burn Captions</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="captions-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="music-toggle" class="form-label">Background Music</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="music-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-row hidden" id="music-volume-row">
+                            <div class="form-group">
+                                <label for="music-volume" class="form-label">Music Volume</label>
+                                <input type="range" id="music-volume" min="-40" max="-10" value="-22" style="width:100%">
+                                <p class="form-hint" id="music-volume-hint">-22 dB</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="sfx-toggle" class="form-label">Sound Effects</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="sfx-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="thumbnails-toggle" class="form-label">Scene Thumbnails</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="thumbnails-toggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
 
                         <button type="submit" class="btn-primary" id="generate-btn">
@@ -345,6 +380,10 @@ One topic per line — each becomes a separate video."></textarea>
                             <p class="form-hint">Edit narration and animations before rendering. After Preview Parse, scenes open here automatically — refine, then approve.</p>
                         </div>
                         <div id="script-scenes" class="script-scenes"></div>
+                        <div id="script-linter-panel" class="script-linter-panel hidden">
+                            <div class="linter-metrics" id="linter-metrics"></div>
+                            <div class="linter-suggestions" id="linter-suggestions"></div>
+                        </div>
                         <div class="script-review-actions">
                             <button type="button" class="btn-outline" id="preview-scene-btn">Preview Scene 1</button>
                             <button type="button" class="btn-outline" id="add-scene-btn">+ Add Scene</button>
@@ -386,6 +425,18 @@ One topic per line — each becomes a separate video."></textarea>
                                 </svg>
                                 Generate Another
                             </button>
+                        </div>
+                        <!-- Quality Metrics Panel -->
+                        <div id="metrics-panel" class="metrics-panel hidden">
+                            <h4 class="metrics-title">📊 Quality Metrics</h4>
+                            <div class="metrics-grid" id="metrics-grid"></div>
+                            <div class="metrics-suggestions" id="metrics-suggestions"></div>
+                        </div>
+                        <!-- Thumbnails Panel -->
+                        <div id="thumbnails-panel" class="thumbnails-panel hidden">
+                            <h4 class="metrics-title">🎬 Scene Thumbnails</h4>
+                            <img id="timeline-image" class="timeline-image hidden" alt="Scene timeline">
+                            <div class="thumbnails-grid" id="thumbnails-grid"></div>
                         </div>
                     </div>
 

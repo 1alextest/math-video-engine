@@ -43,6 +43,7 @@ from provider_health import check_providers
 from script_import import parse_import_script
 from prompt_template import build_external_script_prompt
 from visual_events import get_catalog_for_api
+from quality_metrics import analyze_full_script
 
 load_app_env()
 
@@ -278,6 +279,48 @@ def get_config():
                         "step": 0.1,
                         "default": 0.5,
                         "label": "Audio fade (seconds)",
+                    },
+                    "captions_enabled": {
+                        "type": "toggle",
+                        "default": False,
+                        "label": "Burn captions into video",
+                    },
+                    "caption_style": {
+                        "type": "object",
+                        "default": {
+                            "font": "Arial",
+                            "font_size": 24,
+                            "color": "white",
+                            "bg_color": "black@0.6",
+                        },
+                        "label": "Caption style",
+                    },
+                    "music_enabled": {
+                        "type": "toggle",
+                        "default": False,
+                        "label": "Background music",
+                    },
+                    "music_volume_db": {
+                        "min": -40,
+                        "max": -10,
+                        "step": 1,
+                        "default": -22,
+                        "label": "Music volume (dB)",
+                    },
+                    "sfx_enabled": {
+                        "type": "toggle",
+                        "default": False,
+                        "label": "Sound effects",
+                    },
+                    "thumbnails_enabled": {
+                        "type": "toggle",
+                        "default": True,
+                        "label": "Generate scene thumbnails",
+                    },
+                    "quality_metrics_enabled": {
+                        "type": "toggle",
+                        "default": True,
+                        "label": "Compute quality metrics",
                     },
                 },
             },
@@ -642,6 +685,71 @@ def get_batch_status(batch_id):
             "jobs": jobs_detail,
         }
     )
+
+
+@app.route("/api/jobs/<job_id>/metrics", methods=["GET"])
+def get_job_metrics(job_id):
+    """Return quality metrics for a completed job."""
+    job = get_job_status(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    metrics = job.get("quality_metrics")
+    if not metrics:
+        # Compute on the fly if available
+        script = job.get("script", [])
+        if script:
+            scene_durs = []
+            for i, scene in enumerate(script):
+                word_count = len(scene.get("text", "").split())
+                scene_durs.append(max((word_count / 140) * 60, 3.0))
+            metrics = analyze_full_script(script, scene_durs, topic=job.get("topic", ""))
+        else:
+            return jsonify({"error": "No script available for metrics"}), 404
+    return jsonify(metrics)
+
+
+@app.route("/api/jobs/<job_id>/thumbnails", methods=["GET"])
+def get_job_thumbnails(job_id):
+    """Return scene thumbnail URLs for a completed job."""
+    job = get_job_status(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    thumb_dir = MEDIA_DIR / f"thumbnails_{job_id}"
+    if not thumb_dir.exists():
+        return jsonify({"thumbnails": [], "timeline": None})
+    thumbs = sorted(
+        [f"/media/thumbnails_{job_id}/{f}" for f in os.listdir(thumb_dir) if f.endswith(".png") and not f.startswith("scene_")],
+        key=lambda x: int(re.search(r"scene_(\d+)", x).group(1)) if re.search(r"scene_(\d+)", x) else 0
+    )
+    timeline = f"/media/timeline_{job_id}.png"
+    timeline_exists = (MEDIA_DIR / f"timeline_{job_id}.png").exists()
+    return jsonify(
+        {
+            "thumbnails": thumbs,
+            "timeline": timeline if timeline_exists else None,
+        }
+    )
+
+
+@app.route("/api/metrics/analyze", methods=["POST"])
+def analyze_script_metrics():
+    """Analyze script quality metrics without running a job."""
+    try:
+        data = request.get_json() or {}
+        scenes = data.get("scenes", [])
+        topic = data.get("topic", "")
+        durations = data.get("durations", [])
+        if not scenes or not isinstance(scenes, list):
+            return jsonify({"error": "scenes array is required"}), 400
+        if not durations:
+            durations = []
+            for scene in scenes:
+                word_count = len(scene.get("text", "").split())
+                durations.append(max((word_count / 140) * 60, 3.0))
+        metrics = analyze_full_script(scenes, durations, topic=topic)
+        return jsonify(metrics)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/api/health", methods=["GET"])
