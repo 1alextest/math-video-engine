@@ -358,8 +358,33 @@ def generate_video_workflow(
             video_data = script
         else:
             json_file = str(content_dir / f"video-output-{job_id}.json")
+
+            # Generate narrative arc plan first (improves script coherence)
+            narrative_plan = None
+            try:
+                from narrative_planner import generate_narrative_plan
+
+                length_sec = video_settings.get("length_preset", {}).get("duration_sec", 180) if video_settings else 180
+                narrative_plan = generate_narrative_plan(
+                    client=client,
+                    topic=topic,
+                    provider=provider,
+                    model=model,
+                    length_seconds=length_sec,
+                )
+                if narrative_plan:
+                    print(f"[OK] Narrative plan: {narrative_plan.get('title', topic)}")
+                    print(f"       Hook: {narrative_plan.get('hook', '')}")
+                    print(f"       Aha:  {narrative_plan.get('aha_moment', '')}")
+                    # Persist plan alongside job
+                    with jobs_lock:
+                        jobs[job_id]["narrative_plan"] = narrative_plan
+                    _persist_job(job_id)
+            except Exception as exc:
+                print(f"[WARN] Narrative planning failed: {exc}")
+
             video_data, script_error = generate_script_json(
-                client, topic, json_file, provider, model
+                client, topic, json_file, provider, model, video_settings=video_settings, narrative_plan=narrative_plan
             )
             if script_error or not video_data:
                 raise ValueError(script_error or "Could not generate script")

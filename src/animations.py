@@ -9,13 +9,15 @@ from video_settings import normalize_video_settings
 from visual_events import enrich_scene_events, normalize_visual_events
 
 
-def _build_script_prompt(topic_name, video_settings):
+def _build_script_prompt(topic_name, video_settings, narrative_context=""):
     length = video_settings["length_preset"]
     style = video_settings["style_preset"]
     scene_count = length["scene_count"]
     scene_min = max(scene_count - 1, 4)
     scene_max = scene_count + 1
     max_sentences = length["max_sentences"]
+
+    narrative_section = f"\n{narrative_context}\n" if narrative_context else ""
 
     return f"""Develop an educational script for this topic: {topic_name}
 
@@ -25,6 +27,13 @@ AUDIENCE & TONE:
 
 VISUAL CONSISTENCY (apply to EVERY scene's animation description):
 {style['visual_style']}
+{narrative_section}
+NARRATIVE STRUCTURE (follow this arc):
+- Scene 1 (HOOK): Open with a question, paradox, or counter-intuitive claim. NEVER start with "Today we will learn about..."
+- Scenes 2-3 (SETUP): Establish the problem or misconception. Show the intuitive but WRONG approach briefly.
+- Middle scenes (BUILD): Develop the correct idea with visual intuition BEFORE formulas.
+- Aha scene (REVEAL): The key insight gets extra breathing room and a dramatic visual.
+- Final scenes (PAYOFF + CLOSE): Connect to real world, summarize the single takeaway.
 
 INSTRUCTIONS:
 - Create an engaging and educational script about the topic
@@ -48,6 +57,7 @@ TIMING (CRITICAL):
 - Each scene: approximately {length['scene_duration_sec']} seconds of narration
 - Each scene text: maximum {max_sentences} short sentences
 - Animations must be SIMPLE and paced to match narration length
+- The aha-moment scene (usually the middle scene) should have the MOST detailed visual description
 
 OUTPUT FORMAT (JSON):
 Respond ONLY with a valid JSON array. Each element:
@@ -112,11 +122,18 @@ def generate_script_json(
     video_settings=None,
     max_retries=3,
     on_retry=None,
+    narrative_plan=None,
 ):
     """Generates the JSON file with script and animations using the LLM with automatic retries."""
     load_app_env()
     video_settings = normalize_video_settings(video_settings)
-    prompt = _build_script_prompt(topic_name, video_settings)
+
+    narrative_context = ""
+    if narrative_plan:
+        from narrative_planner import plan_to_prompt_context
+        narrative_context = plan_to_prompt_context(narrative_plan)
+
+    prompt = _build_script_prompt(topic_name, video_settings, narrative_context)
 
     last_error = "Unknown script generation error"
     system_prompt = (
