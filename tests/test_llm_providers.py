@@ -85,8 +85,9 @@ def test_is_provider_configured_ollama_cloud(mock_read_env):
 
 @patch("llm_providers._read_env")
 def test_is_provider_configured_ollama_missing(mock_read_env):
+    # Local Ollama at localhost:11434 is considered configured by default
     mock_read_env.side_effect = _make_read_env_mock({})
-    assert is_provider_configured("ollama") is False
+    assert is_provider_configured("ollama") is True
 
 
 @patch("llm_providers._read_env")
@@ -105,8 +106,9 @@ def test_get_configured_llm_providers(mock_read_env):
 
 @patch("llm_providers._read_env")
 def test_get_configured_llm_providers_none(mock_read_env):
+    # Local Ollama is always considered configured
     mock_read_env.side_effect = _make_read_env_mock({})
-    assert get_configured_llm_providers() == []
+    assert get_configured_llm_providers() == ["ollama"]
 
 
 @patch("llm_providers._read_env")
@@ -161,9 +163,11 @@ def test_setup_llm_client_auto_priority(mock_read_env):
 
 @patch("llm_providers._read_env")
 def test_setup_llm_client_no_providers(mock_read_env):
+    # With no API keys and no local Ollama, auto falls back to Ollama (local default)
     mock_read_env.side_effect = _make_read_env_mock({})
-    with pytest.raises(ValueError, match="No LLM provider configured"):
-        setup_llm_client(provider_preference="auto")
+    config = setup_llm_client(provider_preference="auto")
+    assert config["provider"] == "ollama"
+    assert config["api_style"] == "ollama"
 
 
 @patch("llm_providers._read_env")

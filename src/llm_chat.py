@@ -73,6 +73,8 @@ def complete_llm_vision(
         return response.content[0].text.strip()
 
     if provider == "ollama":
+        import ssl
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -89,7 +91,12 @@ def complete_llm_vision(
         if client.api_key:
             headers["Authorization"] = f"Bearer {client.api_key}"
         request = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-        with urllib.request.urlopen(request, timeout=300) as response:
+        ctx = ssl.create_default_context()
+        lowered = (client.base_url or "").lower()
+        if any(token in lowered for token in ("localhost", "127.0.0.1", "host.docker.internal", ":11434")):
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(request, timeout=300, context=ctx) as response:
             body = json.loads(response.read().decode("utf-8"))
         message = body.get("message") or {}
         content = message.get("content") or message.get("thinking")
@@ -102,6 +109,8 @@ def complete_llm_vision(
 
 def ollama_chat_complete(client, model, system_prompt, user_prompt, max_tokens=16000):
     """Call Ollama's native /api/chat endpoint (used by Ollama Cloud and local Ollama)."""
+    import ssl
+
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
@@ -123,8 +132,15 @@ def ollama_chat_complete(client, model, system_prompt, user_prompt, max_tokens=1
 
     request = urllib.request.Request(url, data=payload, headers=headers, method="POST")
 
+    # Allow unverified HTTPS for local/self-signed Ollama instances
+    ctx = ssl.create_default_context()
+    lowered = (client.base_url or "").lower()
+    if any(token in lowered for token in ("localhost", "127.0.0.1", "host.docker.internal", ":11434")):
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
     try:
-        with urllib.request.urlopen(request, timeout=300) as response:
+        with urllib.request.urlopen(request, timeout=300, context=ctx) as response:
             body = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", errors="replace")

@@ -45,13 +45,13 @@ LLM_PROVIDERS = {
         "default_base_url": "https://api.minimax.io/v1",
     },
     "ollama": {
-        "label": "Ollama Cloud",
+        "label": "Ollama",
         "api_style": "ollama",
         "api_key_env": "OLLAMA_API_KEY",
         "model_env": "OLLAMA_MODEL",
-        "default_model": "gpt-oss:120b-cloud",
+        "default_model": "llama3.2",
         "base_url_env": "OLLAMA_BASE_URL",
-        "default_base_url": "https://ollama.com",
+        "default_base_url": "http://localhost:11434",
     },
 }
 
@@ -121,7 +121,7 @@ def _build_openai_client(spec):
         raise ValueError(f"{spec['label']} requires {spec['api_key_env']}")
 
     base_url = _read_env(spec.get("base_url_env")) or spec.get("default_base_url")
-    client_kwargs = {"api_key": api_key}
+    client_kwargs = {"api_key": api_key, "timeout": 60.0, "max_retries": 2}
     if base_url:
         client_kwargs["base_url"] = base_url
     return openai.OpenAI(**client_kwargs)
@@ -204,12 +204,18 @@ def list_ollama_models():
         headers["Authorization"] = f"Bearer {api_key}"
 
     models = []
+    import ssl
 
     for path in ("/api/tags", "/v1/models"):
         url = f"{base_url}{path}"
         request = urllib.request.Request(url, headers=headers, method="GET")
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            # Allow unverified HTTPS for local/self-signed Ollama instances
+            ctx = ssl.create_default_context()
+            if _is_local_ollama(base_url):
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(request, timeout=15, context=ctx) as response:
                 body = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
             continue

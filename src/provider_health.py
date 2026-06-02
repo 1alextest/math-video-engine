@@ -1,5 +1,7 @@
 """Quick health checks for configured LLM and TTS providers."""
 
+from openai import APITimeoutError
+
 from llm_errors import format_llm_error
 from llm_providers import (
     LLM_PROVIDERS,
@@ -42,6 +44,8 @@ def check_llm_provider(provider_id, model=None):
             f"Ready ({config['model']})",
             detail=response[:60],
         )
+    except APITimeoutError:
+        return _status(False, "Connection timed out — provider may be slow or unreachable")
     except Exception as exc:
         return _status(False, format_llm_error(exc))
 
