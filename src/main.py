@@ -44,6 +44,8 @@ from script_import import parse_import_script
 from prompt_template import build_external_script_prompt
 from visual_events import get_catalog_for_api
 from quality_metrics import analyze_full_script
+from vector_snippets import search_snippets_by_text, get_snippet_count
+from chapter_segmentation import auto_segment_chapters
 
 load_app_env()
 
@@ -752,10 +754,87 @@ def analyze_script_metrics():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/snippets/search", methods=["POST"])
+def search_snippets():
+    """Semantic search for reusable Manim code snippets."""
+    try:
+        data = request.get_json() or {}
+        query = data.get("query", "").strip()
+        top_k = min(int(data.get("top_k", 3)), 10)
+        if not query:
+            return jsonify({"error": "query is required"}), 400
+
+        provider = data.get("llm_provider", "auto")
+        model = data.get("llm_model")
+        from llm_providers import setup_llm_client
+        llm_config = setup_llm_client(provider, model)
+
+        results = search_snippets_by_text(
+            query,
+            llm_config["client"],
+            llm_config["provider"],
+            llm_config["model"],
+            top_k=top_k,
+        )
+        return jsonify({
+            "query": query,
+            "count": get_snippet_count(),
+            "results": results,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/snippets/count", methods=["GET"])
+def snippet_count():
+    """Return total number of stored code snippets."""
+    return jsonify({"count": get_snippet_count()})
+
+
+@app.route("/api/chapters/segment", methods=["POST"])
+def segment_chapters():
+    """Auto-segment scenes into chapters."""
+    try:
+        data = request.get_json() or {}
+        scenes = data.get("scenes", [])
+        if not scenes or not isinstance(scenes, list):
+            return jsonify({"error": "scenes array is required"}), 400
+
+        provider = data.get("llm_provider", "auto")
+        model = data.get("llm_model")
+        use_llm = bool(data.get("use_llm", True))
+
+        client = None
+        if use_llm:
+            from llm_providers import setup_llm_client
+            try:
+                llm_config = setup_llm_client(provider, model)
+                client = llm_config["client"]
+                provider = llm_config["provider"]
+                model = llm_config["model"]
+            except Exception:
+                use_llm = False
+
+        chapters = auto_segment_chapters(
+            scenes,
+            client=client,
+            provider=provider,
+            model=model,
+            use_llm=use_llm,
+        )
+        return jsonify({
+            "chapters": chapters,
+            "scene_count": len(scenes),
+            "chapter_count": len(chapters),
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/health", methods=["GET"])
 def health_check():
     """Health check endpoint"""
-    return jsonify({"status": "healthy", "service": "Topic2Manim API"})
+    return jsonify({"status": "healthy", "service": "Topic2Manim API", "snippets": get_snippet_count()})
 
 
 if __name__ == "__main__":

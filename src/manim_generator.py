@@ -40,6 +40,7 @@ REQUIRED VISUAL EVENTS (implement ALL of these in the animation):
 
     # Build context section if it exists
     context_section = ""
+    snippet_block = previous_context.get("similar_snippets", "") if previous_context else ""
     if previous_context:
         registry_block = previous_context.get("style_registry") or ""
         context_section = f"""
@@ -51,10 +52,12 @@ PREVIOUS SCENE CONTEXT (maintain continuity):
 ```python
 {previous_context.get('code', 'N/A')}
 ```
+{snippet_block}
 """
     else:
-        context_section = """
+        context_section = f"""
 CONTEXT: This is the FIRST scene of the video.
+{snippet_block}
 """
 
     # Add audio duration information if available

@@ -23,6 +23,8 @@ from concat_video import concatenate_videos, sanitize_filename, merge_video_and_
 from video_assembler import assemble_final_video
 from video_html_wrapper import generate_video_html
 from script_import import parse_import_script
+from vector_snippets import extract_snippets_from_job
+from chapter_segmentation import auto_segment_chapters
 from captions import generate_and_burn_captions
 from audio_mixer import mix_audio_with_music, add_sound_effects, map_visual_events_to_sfx
 from quality_metrics import analyze_full_script
@@ -424,6 +426,22 @@ def _render_video_phase(
         except Exception as exc:
             print(f"[WARN] Quality metrics failed: {exc}")
 
+    # Auto-segment chapters for the interactive player
+    chapters = None
+    try:
+        chapters = auto_segment_chapters(
+            video_data,
+            client=llm_config.get("client"),
+            provider=llm_config.get("provider", "openai"),
+            model=llm_config.get("model"),
+            use_llm=bool(llm_config.get("client")),
+        )
+        if chapters:
+            with jobs_lock:
+                jobs[job_id]["chapters"] = chapters
+    except Exception as exc:
+        print(f"[WARN] Chapter segmentation failed: {exc}")
+
     # Generate interactive HTML wrapper
     html_path = str(media_dir / f"output_{job_id}.html")
     try:
@@ -437,6 +455,7 @@ def _render_video_phase(
             title_duration=title_dur,
             end_duration=end_dur,
             scene_video_paths=generated_videos,
+            chapters=chapters,
         )
     except Exception as exc:
         print(f"[WARN] HTML wrapper generation failed: {exc}")
@@ -453,6 +472,26 @@ def _render_video_phase(
         video_url=video_url,
         html_url=html_url,
     )
+
+    # Extract and store Manim code snippets for future reuse
+    try:
+        snippet_ids = extract_snippets_from_job(
+            {
+                "job_id": job_id,
+                "topic": topic,
+                "script": video_data,
+            },
+            client=llm_config.get("client"),
+            provider=llm_config.get("provider", "openai"),
+            model=llm_config.get("model"),
+        )
+        if snippet_ids:
+            print(f"[OK] Stored {len(snippet_ids)} code snippets for reuse")
+            with jobs_lock:
+                jobs[job_id]["snippet_ids"] = snippet_ids
+            _persist_job(job_id)
+    except Exception as exc:
+        print(f"[WARN] Snippet extraction failed: {exc}")
 
 
 def generate_video_workflow(
