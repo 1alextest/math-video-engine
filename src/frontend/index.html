@@ -57,6 +57,7 @@
                     <div class="input-mode-tabs">
                         <button type="button" class="input-mode-tab active" data-mode="topic">From Topic</button>
                         <button type="button" class="input-mode-tab" data-mode="import">Import Script</button>
+                        <button type="button" class="input-mode-tab" data-mode="batch">Batch</button>
                     </div>
 
                     <form id="video-form" class="video-form">
@@ -122,6 +123,28 @@ Visual: Show the key visual for this idea."></textarea>
                                     <button type="button" class="btn-text" id="parse-open-editor-btn">Edit in Review Editor ↓</button>
                                 </div>
                                 <div id="parse-preview-scenes" class="parse-preview-scenes"></div>
+                            </div>
+                        </div>
+
+                        <div id="batch-mode-panel" class="hidden">
+                            <div class="form-group">
+                                <label for="batch-input" class="form-label">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="3" width="7" height="7" />
+                                        <rect x="14" y="3" width="7" height="7" />
+                                        <rect x="14" y="14" width="7" height="7" />
+                                        <rect x="3" y="14" width="7" height="7" />
+                                    </svg>
+                                    Batch Topics
+                                </label>
+                                <textarea id="batch-input" class="import-script-textarea" rows="8"
+                                    placeholder="How does gradient descent work?
+Introduction to linear algebra
+The history of calculus
+What is a neural network?
+
+One topic per line — each becomes a separate video."></textarea>
+                                <p class="form-hint">Enter one topic per line. Up to 50 videos per batch. All use the same settings below.</p>
                             </div>
                         </div>
 
@@ -363,6 +386,18 @@ Visual: Show the key visual for this idea."></textarea>
                                 Generate Another
                             </button>
                         </div>
+                    </div>
+
+                    <!-- Batch Progress Section -->
+                    <div id="batch-progress-section" class="batch-progress-section hidden">
+                        <div class="batch-progress-header">
+                            <h3 class="progress-title">Batch Progress</h3>
+                            <span id="batch-progress-count">0 / 0 completed</span>
+                        </div>
+                        <div class="batch-progress-bar">
+                            <div class="batch-progress-fill" id="batch-progress-fill"></div>
+                        </div>
+                        <div id="batch-jobs-list" class="batch-jobs-list"></div>
                     </div>
 
                     <details id="recent-jobs-section" class="recent-jobs-section" open>

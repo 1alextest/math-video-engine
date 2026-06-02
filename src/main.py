@@ -3,7 +3,9 @@ from flask_cors import CORS
 import os
 import re
 import sys
+import threading
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 # Add parent directory to path to enable imports
@@ -507,6 +509,139 @@ def continue_job(job_id):
         return jsonify({"ok": True, "status": "running"})
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+
+
+# ---------------------------------------------------------------------------
+# Batch generation
+# ---------------------------------------------------------------------------
+_batches = {}
+_batches_lock = threading.RLock()
+
+
+def _start_batch_item(item, shared_config):
+    """Start a single video generation job as part of a batch."""
+    topic = item.get("topic", "").strip()
+    script = item.get("script")
+    input_mode = item.get("input_mode", "topic" if topic else "script")
+    if script and not topic:
+        topic = script[0].get("title", "Batch Video") if isinstance(script, list) else "Batch Video"
+
+    video_settings = normalize_video_settings(item.get("video_settings"))
+    return start_video_generation(
+        topic=topic,
+        enable_tts=shared_config.get("enable_tts", True),
+        llm_provider=shared_config.get("llm_provider", "auto"),
+        tts_provider=shared_config.get("tts_provider", "auto"),
+        llm_model=shared_config.get("llm_model"),
+        video_settings=video_settings,
+        tts_voice=shared_config.get("tts_voice"),
+        input_mode=input_mode,
+        script=script,
+    )
+
+
+@app.route("/api/batch", methods=["POST"])
+def create_batch():
+    """Create a batch of video generation jobs.
+
+    Expects:
+        items: list of {topic, script, video_settings}
+        llm_provider, tts_provider, llm_model, tts_voice, enable_tts
+    Returns:
+        batch_id, job_ids, status
+    """
+    try:
+        data = request.get_json() or {}
+        items = data.get("items", [])
+        if not items or not isinstance(items, list):
+            return jsonify({"error": "items array is required"}), 400
+        if len(items) > 50:
+            return jsonify({"error": "Max 50 items per batch"}), 400
+
+        shared = {
+            "llm_provider": data.get("llm_provider", "auto"),
+            "llm_model": data.get("llm_model"),
+            "tts_provider": data.get("tts_provider", "auto"),
+            "tts_voice": data.get("tts_voice"),
+            "enable_tts": bool(data.get("enable_tts", True)),
+        }
+
+        batch_id = str(uuid.uuid4())
+        job_ids = []
+        for item in items:
+            job_id = _start_batch_item(item, shared)
+            job_ids.append(job_id)
+
+        with _batches_lock:
+            _batches[batch_id] = {
+                "batch_id": batch_id,
+                "job_ids": job_ids,
+                "status": "running",
+                "created_at": datetime.now().isoformat(),
+                "total": len(job_ids),
+            }
+
+        return (
+            jsonify(
+                {
+                    "batch_id": batch_id,
+                    "job_ids": job_ids,
+                    "status": "running",
+                    "total": len(job_ids),
+                }
+            ),
+            202,
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/batch/<batch_id>", methods=["GET"])
+def get_batch_status(batch_id):
+    """Get batch status with per-job details."""
+    with _batches_lock:
+        batch = _batches.get(batch_id)
+    if not batch:
+        return jsonify({"error": "Batch not found"}), 404
+
+    jobs_detail = []
+    completed = 0
+    failed = 0
+    for job_id in batch.get("job_ids", []):
+        job = get_job_status(job_id)
+        if job:
+            jobs_detail.append(
+                {
+                    "job_id": job_id,
+                    "topic": job.get("topic"),
+                    "status": job.get("status"),
+                    "progress": job.get("progress"),
+                    "video_url": job.get("video_url"),
+                    "error": job.get("error"),
+                }
+            )
+            if job.get("status") == "completed":
+                completed += 1
+            elif job.get("status") in ("failed", "interrupted", "cancelled"):
+                failed += 1
+
+    total = batch.get("total", 0)
+    status = batch["status"]
+    if status == "running" and completed + failed >= total:
+        status = "completed" if failed == 0 else "partial"
+        with _batches_lock:
+            _batches[batch_id]["status"] = status
+
+    return jsonify(
+        {
+            "batch_id": batch_id,
+            "status": status,
+            "total": total,
+            "completed": completed,
+            "failed": failed,
+            "jobs": jobs_detail,
+        }
+    )
 
 
 @app.route("/api/health", methods=["GET"])

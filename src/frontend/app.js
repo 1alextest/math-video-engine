@@ -42,6 +42,12 @@ const htmlPlayerBtn = document.getElementById('html-player-btn');
 const inputModeTabs = document.querySelectorAll('.input-mode-tab');
 const topicModePanel = document.getElementById('topic-mode-panel');
 const importModePanel = document.getElementById('import-mode-panel');
+const batchModePanel = document.getElementById('batch-mode-panel');
+const batchInput = document.getElementById('batch-input');
+const batchProgressSection = document.getElementById('batch-progress-section');
+const batchProgressCount = document.getElementById('batch-progress-count');
+const batchProgressFill = document.getElementById('batch-progress-fill');
+const batchJobsList = document.getElementById('batch-jobs-list');
 const importTitleInput = document.getElementById('import-title-input');
 const importScriptInput = document.getElementById('import-script-input');
 const importFormatSelect = document.getElementById('import-format');
@@ -354,6 +360,7 @@ function setInputMode(mode) {
     });
     topicModePanel.classList.toggle('hidden', mode !== 'topic');
     importModePanel.classList.toggle('hidden', mode !== 'import');
+    batchModePanel?.classList.toggle('hidden', mode !== 'batch');
     resetForm();
     parsedImportPreview = null;
     importDraftMode = false;
@@ -361,6 +368,7 @@ function setInputMode(mode) {
     parseWarningsEl.classList.add('hidden');
     parsePreviewBreakdown?.classList.add('hidden');
     scriptReviewSection.classList.add('hidden');
+    batchProgressSection?.classList.add('hidden');
     updateGenerateButtonHint();
 }
 
@@ -993,9 +1001,105 @@ async function submitVideoGeneration(options = {}) {
     }
 }
 
+async function submitBatch() {
+    const raw = batchInput?.value.trim();
+    if (!raw) {
+        alert('Enter at least one topic in the Batch tab.');
+        return;
+    }
+    const topics = raw.split('\n').map(t => t.trim()).filter(Boolean);
+    if (topics.length === 0) {
+        alert('Enter at least one topic.');
+        return;
+    }
+    if (topics.length > 50) {
+        alert('Max 50 topics per batch.');
+        return;
+    }
+
+    progressSection.classList.remove('hidden');
+    resultSection.classList.add('hidden');
+    scriptReviewSection.classList.add('hidden');
+    resumeSection.classList.add('hidden');
+    progressActions?.classList.add('hidden');
+    resetProgress();
+    generateBtn.disabled = true;
+    generateBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spinning"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Starting batch…`;
+
+    try {
+        const payload = {
+            items: topics.map(t => ({ topic: t, video_settings: getVideoSettings() })),
+            llm_provider: llmSelect.value,
+            llm_model: getSelectedLlmModel(),
+            tts_provider: ttsSelect.value,
+            tts_voice: getSelectedTtsVoice(),
+            enable_tts: ttsToggle.checked,
+        };
+        const response = await fetch(`${API_BASE_URL}/api/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to start batch');
+        }
+        const data = await response.json();
+        addLog(`✓ Batch started: ${data.batch_id} (${data.total} videos)`);
+        startBatchPolling(data.batch_id);
+    } catch (error) {
+        console.error('Batch error:', error);
+        addLog(`✗ Batch error: ${error.message}`, 'error');
+        resetForm();
+    }
+}
+
+let batchInterval = null;
+
+function startBatchPolling(batchId) {
+    batchProgressSection?.classList.remove('hidden');
+    batchInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/batch/${batchId}`);
+            if (!response.ok) return;
+            const data = await response.json();
+            renderBatchProgress(data);
+            if (data.status === 'completed' || data.status === 'partial') {
+                clearInterval(batchInterval);
+                batchInterval = null;
+                addLog(`✓ Batch ${data.status}: ${data.completed}/${data.total} done`);
+                resetForm();
+                loadRecentJobs();
+            }
+        } catch (err) {
+            console.error('Batch polling error:', err);
+        }
+    }, 3000);
+}
+
+function renderBatchProgress(data) {
+    const total = data.total || 1;
+    const completed = data.completed || 0;
+    const pct = Math.round((completed / total) * 100);
+    if (batchProgressCount) batchProgressCount.textContent = `${completed} / ${total} completed`;
+    if (batchProgressFill) batchProgressFill.style.width = `${pct}%`;
+    if (!batchJobsList) return;
+    batchJobsList.innerHTML = (data.jobs || []).map(job => {
+        const statusClass = job.status === 'completed' ? 'completed' : job.status === 'failed' ? 'failed' : 'running';
+        return `<div class="batch-job-item ${statusClass}">
+            <span class="batch-job-topic">${escapeHtml(job.topic || 'Untitled')}</span>
+            <span class="batch-job-status ${statusClass}">${job.status} ${job.progress || 0}%</span>
+        </div>`;
+    }).join('');
+}
+
 videoForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    await submitVideoGeneration();
+    if (inputMode === 'batch') {
+        await submitBatch();
+    } else {
+        await submitVideoGeneration();
+    }
 });
 
 // Progress polling
