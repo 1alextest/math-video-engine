@@ -6,7 +6,7 @@ Write-Host "=== Topic2Manim Restart ===" -ForegroundColor Cyan
 
 if (-not (Test-Path ".env") -and (Test-Path ".env.example")) {
     Copy-Item ".env.example" ".env"
-    Write-Host "Created .env from .env.example — add your API keys, then re-run this script." -ForegroundColor Yellow
+    Write-Host "Created .env from .env.example - add your API keys, then re-run this script." -ForegroundColor Yellow
 }
 
 function Invoke-DockerWithTimeout {
@@ -45,19 +45,10 @@ if ($before -and -not $before.PSObject.Properties.Name.Contains("env_file_found"
     Write-Host "Your .env keys are correct on disk but the running container never restarted." -ForegroundColor Yellow
 }
 
-if (-not (Invoke-DockerWithTimeout -Label "Stopping old containers" -Args @("kill", "topic2manim", "topic2manim2"))) {
-    Write-Host ""
-    Write-Host "Docker CLI timed out. Docker Desktop is likely stuck." -ForegroundColor Red
-    Write-Host "1. Right-click the Docker whale icon in the system tray" -ForegroundColor Yellow
-    Write-Host "2. Choose Quit Docker Desktop and wait until it fully exits" -ForegroundColor Yellow
-    Write-Host "3. Start Docker Desktop again and wait until it says Running" -ForegroundColor Yellow
-    Write-Host "4. Re-run: .\restart.ps1" -ForegroundColor Yellow
-    exit 1
-}
+Invoke-DockerWithTimeout -Label "Stopping old container" -Args @("stop", "topic2manim") | Out-Null
+Invoke-DockerWithTimeout -Label "Removing old container" -Args @("rm", "-f", "topic2manim") | Out-Null
 
-Invoke-DockerWithTimeout -Label "Removing old containers" -Args @("rm", "-f", "topic2manim", "topic2manim2") | Out-Null
-
-if (-not (Invoke-DockerWithTimeout -Label "Starting container" -Args @("compose", "up", "-d", "--no-build", "--force-recreate"))) {
+if (-not (Invoke-DockerWithTimeout -Label "Building and starting container" -Args @("compose", "up", "-d", "--build", "--force-recreate") -TimeoutSec 600)) {
     Write-Host "docker compose up timed out. Restart Docker Desktop, then run .\restart.ps1 again." -ForegroundColor Red
     exit 1
 }
@@ -91,6 +82,13 @@ foreach ($provider in @("kimi", "ollama")) {
     }
 }
 
+if ($config.manim_available) {
+    Write-Host "Manim render: ready ($($config.manim_executable))" -ForegroundColor Green
+} else {
+    Write-Host "Manim render: NOT available in container" -ForegroundColor Red
+    $ok = $false
+}
+
 if ($config.configured_tts_providers -contains "elevenlabs") {
     Write-Host "ElevenLabs TTS: ready" -ForegroundColor Green
 } else {
@@ -99,7 +97,9 @@ if ($config.configured_tts_providers -contains "elevenlabs") {
 }
 
 Write-Host "`nOpen http://127.0.0.1:5000" -ForegroundColor Cyan
-Write-Host "Defaults: LLM=$($config.defaults.llm_provider), TTS=$($config.defaults.tts_provider)"
+$defaultLlm = $config.defaults.llm_provider
+$defaultTts = $config.defaults.tts_provider
+Write-Host "Defaults: LLM=$defaultLlm, TTS=$defaultTts"
 
 if (-not $ok) {
     exit 1

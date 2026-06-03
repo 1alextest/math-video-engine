@@ -244,6 +244,12 @@ async function refreshTtsVoiceControls() {
     ttsVoiceSelect.classList.add('hidden');
     ttsVoiceHint.classList.add('hidden');
 
+    if (!serverConfig) {
+        ttsVoiceHint.textContent = 'Loading provider settings...';
+        ttsVoiceHint.classList.remove('hidden');
+        return;
+    }
+
     if (!ttsToggle.checked) {
         ttsVoiceHint.textContent = 'Enable TTS to choose a voice';
         ttsVoiceHint.classList.remove('hidden');
@@ -565,6 +571,9 @@ function renderSetupBanner(config) {
             'TTS is enabled but no TTS provider is configured. Add ELEVENLABS_API_KEY or OpenAI credentials, or turn off Enable TTS.',
         );
     }
+    if (config.manim_available === false && config.manim_hint) {
+        lines.push(config.manim_hint);
+    }
 
     setupBannerEl.classList.remove('hidden');
     setupBannerEl.innerHTML = [
@@ -770,7 +779,7 @@ async function loadServerConfig() {
         }
 
         await refreshModelControls();
-        await refreshTtsVoiceControls();
+        syncTtsControls();
         checkProviderHealth();
         loadRecentJobs();
     } catch (error) {
@@ -925,6 +934,11 @@ async function attachToJob(jobId) {
     progressSection.classList.remove('hidden');
     try {
         const response = await fetch(`${API_BASE_URL}/api/progress/${jobId}`);
+        if (response.status === 404) {
+            localStorage.removeItem('t2m_current_job');
+            currentJobId = null;
+            throw new Error('Job not found on server — start a new generation.');
+        }
         const data = await response.json();
         updateProgress(data);
         if (data.status === 'awaiting_review') {
@@ -937,22 +951,20 @@ async function attachToJob(jobId) {
             }
         } else if (data.can_resume) {
             showResumeOption(data);
-        } else if (data.resumable || data.status === 'interrupted') {
+        } else if (data.status === 'failed' || data.status === 'interrupted' || data.status === 'cancelled') {
             addLog(data.message || 'This job cannot be resumed — no render checkpoint saved.', 'error');
             resumeSection.classList.add('hidden');
-            if (!data.script?.length) {
-                localStorage.removeItem('t2m_current_job');
-            }
+            localStorage.removeItem('t2m_current_job');
+            currentJobId = null;
         } else if (data.status === 'running') {
             renderStarted = true;
             progressActions?.classList.remove('hidden');
             startProgressPolling();
-        } else if (data.status === 'failed') {
-            addLog(data.error || data.message || 'Job failed.', 'error');
-            resumeSection.classList.add('hidden');
         }
     } catch (error) {
         addLog(`Could not load job: ${error.message}`, 'error');
+        localStorage.removeItem('t2m_current_job');
+        resumeSection.classList.add('hidden');
     }
 }
 
@@ -978,7 +990,6 @@ if (cancelJobBtn) {
 }
 
 loadServerConfig().then(() => {
-    syncTtsControls();
     setInputMode('topic');
     const savedJobId = localStorage.getItem('t2m_current_job');
     if (savedJobId) {
@@ -1206,11 +1217,12 @@ function startProgressPolling(options = {}) {
                 progressActions?.classList.add('hidden');
                 if (isPreview) {
                     addLog(`✗ Preview failed: ${data.error || data.message}`, 'error');
-                } else if (data.resumable || data.status === 'interrupted' || data.status === 'cancelled') {
+                } else if (data.can_resume) {
                     showResumeOption(data);
                 } else {
                     addLog(`✗ Generation failed: ${data.error || data.message}`, 'error');
                     resetForm();
+                    localStorage.removeItem('t2m_current_job');
                 }
                 loadRecentJobs();
             } else if (data.status === 'running') {
@@ -1306,9 +1318,17 @@ async function resumeCurrentJob() {
     resumeJobBtn.disabled = true;
     try {
         const statusResponse = await fetch(`${API_BASE_URL}/api/progress/${currentJobId}`);
+        if (statusResponse.status === 404) {
+            localStorage.removeItem('t2m_current_job');
+            throw new Error('Job not found on server — it may have expired. Start a new generation.');
+        }
         const statusData = await statusResponse.json();
         if (!statusData.can_resume) {
-            throw new Error(statusData.error || statusData.message || 'This job cannot be resumed.');
+            throw new Error(
+                statusData.error
+                || statusData.message
+                || 'This job cannot be resumed — no render checkpoint saved.',
+            );
         }
     } catch (error) {
         addLog(`✗ ${error.message}`, 'error');

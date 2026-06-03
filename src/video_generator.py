@@ -20,7 +20,6 @@ from render_pipeline import (
     compile_scene_from_code,
 )
 from concat_video import concatenate_videos, sanitize_filename, merge_video_and_audio
-from video_assembler import assemble_final_video
 from video_html_wrapper import generate_video_html
 from script_import import parse_import_script
 from vector_snippets import extract_snippets_from_job
@@ -128,6 +127,12 @@ def _render_video_phase(
     media_dir,
 ):
     """Render scenes, concatenate, and merge audio."""
+    from manim_runtime import manim_unavailable_reason
+
+    manim_reason = manim_unavailable_reason()
+    if manim_reason:
+        raise RuntimeError(manim_reason)
+
     checkpoint = load_checkpoint(jobs.get(job_id, {}))
 
     # TTS
@@ -218,7 +223,20 @@ def _render_video_phase(
     )
 
     if not generated_videos:
-        raise Exception("No videos were generated")
+        from manim_runtime import manim_unavailable_reason
+
+        checkpoint_after = load_checkpoint(jobs.get(job_id, {}))
+        codes = checkpoint_after.get("scene_codes") or {}
+        videos = checkpoint_after.get("scene_videos") or {}
+        coded = len(codes)
+        rendered = len(videos)
+        manim_reason = manim_unavailable_reason()
+        if manim_reason:
+            raise Exception(f"No videos were generated: {manim_reason}")
+        raise Exception(
+            f"No videos were generated ({rendered}/{coded} scenes compiled; "
+            "check server logs for Manim errors)"
+        )
 
     if is_job_cancelled(jobs, job_id, jobs_lock):
         raise JobCancelledError("Render cancelled by user")
@@ -232,6 +250,8 @@ def _render_video_phase(
     )
     final_output_path = str(media_dir / f"output_{job_id}.mp4")
     try:
+        from video_assembler import assemble_final_video
+
         assemble_final_video(
             scene_paths=generated_videos,
             output_path=final_output_path,
@@ -795,13 +815,18 @@ def _continue_render_worker(job_id, script_override=None):
 
 def resume_video_generation(job_id):
     """Resume an interrupted render from the last checkpoint."""
+    from job_resume import job_can_resume
+
     _ensure_job_record(job_id)
     with jobs_lock:
         if job_id not in jobs:
             raise ValueError("Job not found")
         job = jobs[job_id]
-        if job.get("status") not in ("failed", "interrupted", "cancelled"):
-            raise ValueError("Job cannot be resumed")
+        if not job_can_resume(job):
+            status = job.get("status", "unknown")
+            raise ValueError(
+                f"Job cannot be resumed (status={status}, no render checkpoint saved)"
+            )
         job["status"] = "running"
         job["cancel_requested"] = False
         job["error"] = None
@@ -860,6 +885,8 @@ def _resume_worker(job_id):
 
 def list_jobs(limit=20):
     """List recent jobs for resume/history UI."""
+    from job_resume import job_can_resume
+
     recent = db.list_recent_jobs(limit=limit)
     return [
         {
@@ -869,6 +896,7 @@ def list_jobs(limit=20):
             "progress": j.get("progress"),
             "created_at": j.get("created_at"),
             "updated_at": j.get("updated_at"),
+            "can_resume": job_can_resume(j),
         }
         for j in recent
     ]

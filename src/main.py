@@ -40,9 +40,11 @@ from llm_providers import (
 )
 from video_settings import get_settings_options, normalize_video_settings
 from provider_health import check_providers
+from job_resume import enrich_job_for_api
 from script_import import parse_import_script
 from prompt_template import build_external_script_prompt
 from visual_events import get_catalog_for_api
+from manim_runtime import manim_status_for_api
 from quality_metrics import analyze_full_script
 from vector_snippets import search_snippets_by_text, get_snippet_count
 from chapter_segmentation import auto_segment_chapters
@@ -188,7 +190,7 @@ def get_progress(job_id):
     if not job:
         return jsonify({"error": "Job not found"}), 404
 
-    return jsonify(job)
+    return jsonify(enrich_job_for_api(job))
 
 
 @app.route("/media/<path:filename>")
@@ -333,6 +335,7 @@ def get_config():
                 not in ("0", "false", "no"),
                 "parallel_workers": os.getenv("RENDER_PARALLEL_WORKERS", "2"),
             },
+            **manim_status_for_api(),
         }
     )
 

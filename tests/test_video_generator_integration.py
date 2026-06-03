@@ -100,6 +100,7 @@ def test_update_job_script_not_reviewable():
         update_job_script(job_id, [])
 
 
+@patch("manim_runtime.manim_unavailable_reason", return_value=None)
 @patch("video_generator.concatenate_videos")
 @patch("video_generator.merge_video_and_audio")
 @patch("video_generator.render_scenes_with_pipeline")
@@ -113,6 +114,7 @@ def test_generate_video_workflow_success(
     mock_render_pipeline,
     mock_merge,
     mock_concat,
+    _mock_manim_ok,
 ):
     """End-to-end happy path for video generation with all dependencies mocked."""
     mock_setup_llm.return_value = {

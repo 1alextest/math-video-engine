@@ -67,9 +67,10 @@ def test_compile_video_invalid_class_name(mock_norm):
         os.remove(temp_path)
 
 
+@patch("concat_video.resolve_manim_executable", return_value="manim")
 @patch("video_settings.normalize_video_settings")
 @patch("concat_video.subprocess.run")
-def test_compile_video_success(mock_run, mock_norm):
+def test_compile_video_success(mock_run, mock_norm, _mock_manim):
     mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     mock_run.return_value = MagicMock(returncode=0, stderr="")
 
@@ -85,9 +86,10 @@ def test_compile_video_success(mock_run, mock_norm):
         os.remove(temp_path)
 
 
+@patch("concat_video.resolve_manim_executable", return_value="manim")
 @patch("video_settings.normalize_video_settings")
 @patch("concat_video.subprocess.run")
-def test_compile_video_failure(mock_run, mock_norm):
+def test_compile_video_failure(mock_run, mock_norm, _mock_manim):
     mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     mock_run.return_value = MagicMock(returncode=1, stderr="syntax error")
 
@@ -102,9 +104,10 @@ def test_compile_video_failure(mock_run, mock_norm):
         os.remove(temp_path)
 
 
+@patch("concat_video.resolve_manim_executable", return_value="manim")
 @patch("video_settings.normalize_video_settings")
 @patch("concat_video.subprocess.run")
-def test_compile_video_timeout(mock_run, mock_norm):
+def test_compile_video_timeout(mock_run, mock_norm, _mock_manim):
     mock_norm.return_value = {"quality_preset": {"manim_flag": "-pq", "output_subdir": "720p30"}}
     from subprocess import TimeoutExpired
 

@@ -6,6 +6,8 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from manim_runtime import resolve_manim_executable
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -82,8 +84,14 @@ def compile_video(file_path, class_name, topic_slug, index, quality="standard"):
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", class_name):
         return None, f"Invalid class name: {class_name}"
 
+    manim_exe = resolve_manim_executable()
+    if not manim_exe:
+        return None, (
+            "Manim CLI not found. On Windows use Docker (restart.ps1) or install manim in .venv."
+        )
+
     try:
-        cmd = ["manim", manim_flag, file_path, class_name]
+        cmd = [manim_exe, manim_flag, file_path, class_name]
         print(f"\nCompiling: {' '.join(cmd)}")
 
         result = subprocess.run(

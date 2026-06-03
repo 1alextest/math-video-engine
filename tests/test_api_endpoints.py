@@ -38,6 +38,10 @@ def test_config_endpoint(client):
     assert "tts_providers" in data
     assert "defaults" in data
     assert "video_settings_options" in data
+    assert "manim_available" in data
+    assert "manim_executable" in data
+    assert "manim_hint" in data
+    assert "render_backend" in data
 
 
 def test_llm_models_endpoint(client):
@@ -145,6 +149,28 @@ def test_progress_endpoint(mock_status, client):
 
 
 @patch("main.get_job_status")
+def test_progress_endpoint_enriches_can_resume(mock_status, client):
+    mock_status.return_value = {
+        "job_id": "j-failed",
+        "status": "failed",
+        "script": [{"text": "A"}, {"text": "B"}],
+        "scenes_total": 2,
+        "scenes_done": 2,
+        "render_checkpoint": {
+            "scene_codes": {
+                "1": {"class_name": "S1", "content": "from manim import *\nclass S1(Scene): pass"},
+            },
+            "scene_videos": {},
+        },
+    }
+    r = client.get("/api/progress/j-failed")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["can_resume"] is True
+    assert data["resumable"] is True
+
+
+@patch("main.get_job_status")
 def test_progress_not_found(mock_status, client):
     mock_status.return_value = None
     r = client.get("/api/progress/missing")
@@ -201,6 +227,13 @@ def test_resume_job(mock_resume, client):
     r = client.post("/api/jobs/j1/resume")
     assert r.status_code == 200
     mock_resume.assert_called_once_with("j1")
+
+
+@patch("main.resume_video_generation", side_effect=ValueError("Job cannot be resumed"))
+def test_resume_job_returns_400_when_not_resumable(mock_resume, client):
+    r = client.post("/api/jobs/j1/resume")
+    assert r.status_code == 400
+    assert "cannot be resumed" in r.get_json()["error"]
 
 
 @patch("main.retry_scene_render")
@@ -298,6 +331,28 @@ def test_batch_empty_items(client):
 def test_batch_get_not_found(client):
     r = client.get("/api/batch/nonexistent")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Script metrics (linter panel)
+# ---------------------------------------------------------------------------
+def test_metrics_analyze(client):
+    r = client.post(
+        "/api/metrics/analyze",
+        json={
+            "scenes": [{"text": "Why does gravity pull us down?", "animation": "fade in"}],
+            "topic": "Gravity",
+        },
+    )
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["scene_count"] == 1
+    assert "overall_wpm" in data
+
+
+def test_metrics_analyze_requires_scenes(client):
+    r = client.post("/api/metrics/analyze", json={"topic": "x"})
+    assert r.status_code == 400
 
 
 # ---------------------------------------------------------------------------
