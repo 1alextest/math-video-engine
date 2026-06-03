@@ -5,45 +5,62 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: production
     container_name: topic2manim
     ports:
-      - "5000:5000"
+      - "${PORT:-5000}:5000"
     volumes:
-      # Mount source for dev (env + code updates without rebuild)
-      - ./src:/app/src
-      # Mount the media directory to persist generated videos
-      - ./media:/app/media
-      # Persist generated scripts, job state, and videos
-      - ./content:/app/content
-      # Mount the public directory
-      - ./public:/app/public
-      # Optional: mount .env file for environment variables
-      - ./.env:/app/.env
+      # Persist generated videos, job state, and scripts
+      - media_data:/app/media
+      - content_data:/app/content
+      - public_data:/app/public
     env_file:
       - .env
     environment:
-      - FLASK_APP=main.py
       - PYTHONUNBUFFERED=1
-      - LLM_PROVIDER=${LLM_PROVIDER}
-      - TTS_PROVIDER=${TTS_PROVIDER}
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
-      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
-      - OLLAMA_API_KEY=${OLLAMA_API_KEY}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
-      - OLLAMA_MODEL=${OLLAMA_MODEL}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
-      - KIMI_API_KEY=${KIMI_API_KEY}
-      - KIMI_BASE_URL=${KIMI_BASE_URL}
-      - KIMI_MODEL=${KIMI_MODEL}
-      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-      - MINIMAX_BASE_URL=${MINIMAX_BASE_URL}
-      - MINIMAX_MODEL=${MINIMAX_MODEL}
+      - PORT=5000
+      # Override these in .env for production
+      - LLM_PROVIDER=${LLM_PROVIDER:-auto}
+      - TTS_PROVIDER=${TTS_PROVIDER:-auto}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
     networks:
       - topic2manim-network
+    # Graceful shutdown: wait up to 60s for rendering threads
+    stop_grace_period: 60s
+
+  # Optional: Ollama for local LLM inference
+  # Uncomment if you want local LLM support without external API keys
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: topic2manim-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   networks:
+  #     - topic2manim-network
+  #   # For GPU support, uncomment:
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: 1
+  #   #           capabilities: [gpu]
+
+volumes:
+  media_data:
+  content_data:
+  public_data:
+  # ollama_data:
 
 networks:
   topic2manim-network:

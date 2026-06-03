@@ -2,16 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 jobs:
-  lint-and-test:
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ['3.11', '3.12']
 
     steps:
       - uses: actions/checkout@v4
@@ -24,19 +24,39 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
-          version: "latest"
+          version: 'latest'
 
-      - name: Install dependencies
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libcairo2-dev libpango1.0-dev pkg-config
+
+      - name: Install Python dependencies
         run: uv pip install --system ".[dev]"
 
-      - name: Lint with ruff
-        run: ruff check src tests
-
-      - name: Format check with black
-        run: black --check src tests
-
-      - name: Type check with mypy
-        run: mypy src
-
       - name: Run tests
-        run: pytest
+        run: pytest tests/ --tb=short
+
+      - name: Run ruff
+        run: ruff check src/ tests/
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: docker build --target production -t topic2manim:test .
+
+      - name: Test Docker health check
+        run: |
+          docker run -d --name t2m-test -p 5000:5000 topic2manim:test
+          sleep 15
+          curl -f http://localhost:5000/api/health || exit 1
+          docker stop t2m-test

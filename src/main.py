@@ -836,8 +836,49 @@ def segment_chapters():
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
-    """Health check endpoint"""
-    return jsonify({"status": "healthy", "service": "Topic2Manim API", "snippets": get_snippet_count()})
+    """Health check endpoint with dependency status."""
+    from manim_runtime import manim_status_for_api
+
+    # Disk space check
+    media_dir = Path(__file__).parent.parent / "media"
+    try:
+        stat = os.statvfs(media_dir) if hasattr(os, "statvfs") else None
+        if stat:
+            free_gb = (stat.f_bavail * stat.f_frsize) / (1024 ** 3)
+        else:
+            free_gb = None
+    except Exception:
+        free_gb = None
+
+    manim_status = manim_status_for_api()
+    llm_ready = len(get_available_llm_providers()) > 0
+    tts_ready = len(get_available_tts_providers()) > 0
+
+    status = "healthy"
+    if not manim_status["manim_available"]:
+        status = "degraded"
+    if not llm_ready:
+        status = "degraded"
+
+    return jsonify(
+        {
+            "status": status,
+            "service": "Topic2Manim API",
+            "version": "0.1.0",
+            "manim": manim_status,
+            "providers": {
+                "llm_ready": llm_ready,
+                "llm_count": len(get_all_llm_providers()),
+                "llm_configured": len(get_available_llm_providers()),
+                "tts_ready": tts_ready,
+                "tts_count": len(get_all_tts_providers()),
+                "tts_configured": len(get_available_tts_providers()),
+            },
+            "disk": {"media_free_gb": round(free_gb, 2) if free_gb is not None else None},
+            "snippets": get_snippet_count(),
+            "timestamp": datetime.now().isoformat(),
+        }
+    )
 
 
 if __name__ == "__main__":

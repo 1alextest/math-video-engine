@@ -1136,3 +1136,33 @@ def _preview_scene_worker(
             error=str(e),
             message=f"Error: {str(e)}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown helpers
+# ---------------------------------------------------------------------------
+
+
+def stop_all_workers(timeout: float = 5.0):
+    """Signal all running job threads to cancel and wait for them to finish.
+
+    Called during SIGTERM/SIGINT for graceful shutdown.
+    """
+    with jobs_lock:
+        active_jobs = [
+            (jid, thread)
+            for jid, thread in _job_threads.items()
+            if thread.is_alive()
+        ]
+        for jid, _ in active_jobs:
+            jobs[jid]["cancel_requested"] = True
+
+    for jid, thread in active_jobs:
+        print(f"[SHUTDOWN] Waiting for job {jid}...")
+        thread.join(timeout=timeout)
+        if thread.is_alive():
+            print(f"[SHUTDOWN] Job {jid} did not stop in time")
+        else:
+            print(f"[SHUTDOWN] Job {jid} stopped")
+
+    _job_threads.clear()
