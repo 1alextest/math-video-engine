@@ -1,5 +1,4 @@
 import os
-import json
 import uuid
 import threading
 import shutil
@@ -24,6 +23,12 @@ from concat_video import concatenate_videos, sanitize_filename, merge_video_and_
 from video_assembler import assemble_final_video
 from video_html_wrapper import generate_video_html
 from script_import import parse_import_script
+from vector_snippets import extract_snippets_from_job
+from chapter_segmentation import auto_segment_chapters
+from captions import generate_and_burn_captions
+from audio_mixer import mix_audio_with_music, add_sound_effects, map_visual_events_to_sfx
+from quality_metrics import analyze_full_script
+from thumbnails import generate_scene_thumbnails, generate_composite_timeline
 
 load_dotenv()
 
@@ -265,6 +270,178 @@ def _render_video_phase(
             if os.path.exists(silent_video_path):
                 os.rename(silent_video_path, final_output_path)
 
+    # Background music mixing
+    music_enabled = (video_settings or {}).get("music_enabled", False)
+    mixed_audio_path = audio_path
+    if music_enabled and audio_path and os.path.exists(audio_path):
+        update_job_status(
+            job_id,
+            progress=82,
+            current_step="audio",
+            message="Mixing background music...",
+        )
+        music_output = str(media_dir / f"audio_mixed_{job_id}.mp3")
+        music_track = (video_settings or {}).get("music_track")
+        music_volume = float((video_settings or {}).get("music_volume_db", -22))
+        ok = mix_audio_with_music(
+            narration_path=audio_path,
+            output_path=music_output,
+            topic=topic,
+            music_volume_db=music_volume,
+            music_track=music_track,
+        )
+        if ok:
+            mixed_audio_path = music_output
+
+    # Sound effects
+    sfx_enabled = (video_settings or {}).get("sfx_enabled", False)
+    if sfx_enabled and mixed_audio_path and os.path.exists(mixed_audio_path):
+        update_job_status(
+            job_id,
+            progress=84,
+            current_step="audio",
+            message="Adding sound effects...",
+        )
+        sfx_output = str(media_dir / f"audio_sfx_{job_id}.mp3")
+        # Build SFX events from visual events in scenes
+        sfx_events = []
+        for i, scene in enumerate(video_data):
+            events = scene.get("visual_events", [])
+            scene_start = sum(audio_durations.get(str(j), 0) for j in range(1, i + 1))
+            scene_sfx = map_visual_events_to_sfx(events, scene_start)
+            sfx_events.extend(scene_sfx)
+        if sfx_events:
+            ok = add_sound_effects(mixed_audio_path, sfx_output, sfx_events)
+            if ok:
+                mixed_audio_path = sfx_output
+
+    # Replace audio in final video if mixing was done
+    if mixed_audio_path != audio_path and mixed_audio_path and os.path.exists(mixed_audio_path):
+        update_job_status(
+            job_id,
+            progress=86,
+            current_step="audio",
+            message="Replacing audio track...",
+        )
+        final_with_audio = str(media_dir / f"output_audio_{job_id}.mp4")
+        try:
+            import subprocess
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", final_output_path,
+                "-i", mixed_audio_path,
+                "-c:v", "copy",
+                "-map", "0:v:0",
+                "-map", "1:a:0",
+                "-shortest",
+                final_with_audio,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode == 0 and os.path.exists(final_with_audio):
+                os.replace(final_with_audio, final_output_path)
+        except Exception as exc:
+            print(f"[WARN] Audio replacement failed: {exc}")
+
+    # Auto-captions
+    captions_enabled = (video_settings or {}).get("captions_enabled", False)
+    if captions_enabled:
+        update_job_status(
+            job_id,
+            progress=88,
+            current_step="captions",
+            message="Burning captions into video...",
+        )
+        captioned_output = str(media_dir / f"output_captions_{job_id}.mp4")
+        # Estimate scene durations from audio
+        scene_durs = []
+        for i in range(len(video_data)):
+            dur = audio_durations.get(str(i + 1), 0)
+            if dur == 0:
+                word_count = len(video_data[i].get("text", "").split())
+                dur = max((word_count / 140) * 60, 3.0)
+            scene_durs.append(dur)
+        ok = generate_and_burn_captions(
+            video_path=final_output_path,
+            scenes=video_data,
+            output_path=captioned_output,
+            scene_durations=scene_durs,
+            style=(video_settings or {}).get("caption_style"),
+            temp_dir=str(media_dir),
+        )
+        if ok and os.path.exists(captioned_output):
+            os.replace(captioned_output, final_output_path)
+
+    # Scene thumbnails
+    thumbnails_enabled = (video_settings or {}).get("thumbnails_enabled", True)
+    thumbnail_paths = []
+    if thumbnails_enabled and generated_videos:
+        update_job_status(
+            job_id,
+            progress=92,
+            current_step="thumbnails",
+            message="Generating scene thumbnails...",
+        )
+        thumb_dir = str(media_dir / f"thumbnails_{job_id}")
+        scene_durs = []
+        for i in range(len(video_data)):
+            dur = audio_durations.get(str(i + 1), 0)
+            scene_durs.append(dur)
+        thumbnail_paths = generate_scene_thumbnails(
+            scene_videos=generated_videos,
+            output_dir=thumb_dir,
+            scene_durations=scene_durs,
+            width=320,
+        )
+        # Composite timeline
+        timeline_path = str(media_dir / f"timeline_{job_id}.png")
+        generate_composite_timeline(
+            thumbnails=thumbnail_paths,
+            output_path=timeline_path,
+            columns=4,
+        )
+        if os.path.exists(timeline_path):
+            with jobs_lock:
+                jobs[job_id]["timeline_image"] = f"/media/{os.path.basename(timeline_path)}"
+
+    # Quality metrics
+    metrics_enabled = (video_settings or {}).get("quality_metrics_enabled", True)
+    if metrics_enabled and video_data:
+        update_job_status(
+            job_id,
+            progress=96,
+            current_step="metrics",
+            message="Computing quality metrics...",
+        )
+        scene_durs = []
+        for i in range(len(video_data)):
+            dur = audio_durations.get(str(i + 1), 0)
+            if dur == 0:
+                dur = len(video_data[i].get("text", "").split()) / 140 * 60
+            scene_durs.append(dur)
+        try:
+            metrics = analyze_full_script(video_data, scene_durs, topic=topic)
+            with jobs_lock:
+                jobs[job_id]["quality_metrics"] = metrics
+            _persist_job(job_id)
+        except Exception as exc:
+            print(f"[WARN] Quality metrics failed: {exc}")
+
+    # Auto-segment chapters for the interactive player
+    chapters = None
+    try:
+        chapters = auto_segment_chapters(
+            video_data,
+            client=llm_config.get("client"),
+            provider=llm_config.get("provider", "openai"),
+            model=llm_config.get("model"),
+            use_llm=bool(llm_config.get("client")),
+        )
+        if chapters:
+            with jobs_lock:
+                jobs[job_id]["chapters"] = chapters
+    except Exception as exc:
+        print(f"[WARN] Chapter segmentation failed: {exc}")
+
     # Generate interactive HTML wrapper
     html_path = str(media_dir / f"output_{job_id}.html")
     try:
@@ -278,6 +455,7 @@ def _render_video_phase(
             title_duration=title_dur,
             end_duration=end_dur,
             scene_video_paths=generated_videos,
+            chapters=chapters,
         )
     except Exception as exc:
         print(f"[WARN] HTML wrapper generation failed: {exc}")
@@ -294,6 +472,26 @@ def _render_video_phase(
         video_url=video_url,
         html_url=html_url,
     )
+
+    # Extract and store Manim code snippets for future reuse
+    try:
+        snippet_ids = extract_snippets_from_job(
+            {
+                "job_id": job_id,
+                "topic": topic,
+                "script": video_data,
+            },
+            client=llm_config.get("client"),
+            provider=llm_config.get("provider", "openai"),
+            model=llm_config.get("model"),
+        )
+        if snippet_ids:
+            print(f"[OK] Stored {len(snippet_ids)} code snippets for reuse")
+            with jobs_lock:
+                jobs[job_id]["snippet_ids"] = snippet_ids
+            _persist_job(job_id)
+    except Exception as exc:
+        print(f"[WARN] Snippet extraction failed: {exc}")
 
 
 def generate_video_workflow(
@@ -358,8 +556,33 @@ def generate_video_workflow(
             video_data = script
         else:
             json_file = str(content_dir / f"video-output-{job_id}.json")
+
+            # Generate narrative arc plan first (improves script coherence)
+            narrative_plan = None
+            try:
+                from narrative_planner import generate_narrative_plan
+
+                length_sec = video_settings.get("length_preset", {}).get("duration_sec", 180) if video_settings else 180
+                narrative_plan = generate_narrative_plan(
+                    client=client,
+                    topic=topic,
+                    provider=provider,
+                    model=model,
+                    length_seconds=length_sec,
+                )
+                if narrative_plan:
+                    print(f"[OK] Narrative plan: {narrative_plan.get('title', topic)}")
+                    print(f"       Hook: {narrative_plan.get('hook', '')}")
+                    print(f"       Aha:  {narrative_plan.get('aha_moment', '')}")
+                    # Persist plan alongside job
+                    with jobs_lock:
+                        jobs[job_id]["narrative_plan"] = narrative_plan
+                    _persist_job(job_id)
+            except Exception as exc:
+                print(f"[WARN] Narrative planning failed: {exc}")
+
             video_data, script_error = generate_script_json(
-                client, topic, json_file, provider, model
+                client, topic, json_file, provider, model, video_settings=video_settings, narrative_plan=narrative_plan
             )
             if script_error or not video_data:
                 raise ValueError(script_error or "Could not generate script")

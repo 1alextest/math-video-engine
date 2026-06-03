@@ -25,6 +25,22 @@ const titleCardDurationInput = document.getElementById('title-card-duration');
 const endScreenDurationInput = document.getElementById('end-screen-duration');
 const enableTitleCardToggle = document.getElementById('enable-title-card');
 const enableEndScreenToggle = document.getElementById('enable-end-screen');
+const captionsToggle = document.getElementById('captions-toggle');
+const musicToggle = document.getElementById('music-toggle');
+const musicVolumeRow = document.getElementById('music-volume-row');
+const musicVolumeInput = document.getElementById('music-volume');
+const musicVolumeHint = document.getElementById('music-volume-hint');
+const sfxToggle = document.getElementById('sfx-toggle');
+const thumbnailsToggle = document.getElementById('thumbnails-toggle');
+const metricsPanel = document.getElementById('metrics-panel');
+const metricsGrid = document.getElementById('metrics-grid');
+const metricsSuggestions = document.getElementById('metrics-suggestions');
+const thumbnailsPanel = document.getElementById('thumbnails-panel');
+const thumbnailsGrid = document.getElementById('thumbnails-grid');
+const timelineImage = document.getElementById('timeline-image');
+const linterPanel = document.getElementById('script-linter-panel');
+const linterMetrics = document.getElementById('linter-metrics');
+const linterSuggestions = document.getElementById('linter-suggestions');
 const providerHealthEl = document.getElementById('provider-health');
 const setupBannerEl = document.getElementById('setup-banner');
 const scriptReviewSection = document.getElementById('script-review-section');
@@ -155,6 +171,12 @@ function getVideoSettings() {
         end_screen_duration: parseFloat(endScreenDurationInput.value) || 3.0,
         enable_title_card: enableTitleCardToggle.checked,
         enable_end_screen: enableEndScreenToggle.checked,
+        captions_enabled: captionsToggle.checked,
+        music_enabled: musicToggle.checked,
+        music_volume_db: musicToggle.checked ? (parseInt(musicVolumeInput.value, 10) || -22) : undefined,
+        sfx_enabled: sfxToggle.checked,
+        thumbnails_enabled: thumbnailsToggle.checked,
+        quality_metrics_enabled: true,
     };
 }
 
@@ -769,6 +791,14 @@ ttsToggle.addEventListener('change', () => {
     syncTtsControls();
     checkProviderHealth();
 });
+musicToggle.addEventListener('change', () => {
+    musicVolumeRow.classList.toggle('hidden', !musicToggle.checked);
+});
+if (musicVolumeInput) {
+    musicVolumeInput.addEventListener('input', () => {
+        if (musicVolumeHint) musicVolumeHint.textContent = `${musicVolumeInput.value} dB`;
+    });
+}
 llmSelect.addEventListener('change', () => {
     refreshModelControls();
     checkProviderHealth();
@@ -1335,6 +1365,16 @@ function collectScriptFromEditor() {
         }
         const events = (card.dataset.visualEvents || '').split(',').map((e) => e.trim()).filter(Boolean);
         if (events.length) scene.visual_events = events;
+        // Style overrides
+        const palette = card.querySelector('.scene-style-palette')?.value;
+        const speed = card.querySelector('.scene-style-speed')?.value;
+        const fontSize = card.querySelector('.scene-style-font-size')?.value;
+        if (palette || speed || fontSize) {
+            scene.style = {};
+            if (palette) scene.style.palette = palette;
+            if (speed) scene.style.speed = speed;
+            if (fontSize) scene.style.font_size = parseInt(fontSize, 10);
+        }
         return scene;
     });
 }
@@ -1403,6 +1443,37 @@ function addSceneCard(scene = { text: '', animation: '' }, sceneNumber = null, a
         <textarea class="scene-text" placeholder="What the narrator says...">${escapeHtml(scene.text)}</textarea>
         <label>Animation</label>
         <textarea class="scene-animation" placeholder="What appears on screen...">${escapeHtml(scene.animation)}</textarea>
+        <div class="scene-style-section">
+            <button type="button" class="scene-style-toggle" data-expanded="false">Style Overrides ▼</button>
+            <div class="scene-style-panel hidden">
+                <div class="form-row" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label style="font-size:11px;">Color Palette</label>
+                        <select class="scene-style-palette form-select" style="font-size:12px; padding:6px;">
+                            <option value="">Default</option>
+                            <option value="warm">Warm (oranges/reds)</option>
+                            <option value="cool">Cool (blues/greens)</option>
+                            <option value="monochrome">Monochrome (grays)</option>
+                            <option value="vibrant">Vibrant (high contrast)</option>
+                            <option value="pastel">Pastel (soft tones)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size:11px;">Animation Speed</label>
+                        <select class="scene-style-speed form-select" style="font-size:12px; padding:6px;">
+                            <option value="">Default</option>
+                            <option value="slow">Slow (2× duration)</option>
+                            <option value="normal">Normal</option>
+                            <option value="fast">Fast (0.5× duration)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="font-size:11px;">Font Size Override (px)</label>
+                    <input type="number" class="scene-style-font-size topic-input" style="font-size:12px; padding:6px;" placeholder="e.g., 36" min="12" max="72" value="${escapeHtml(scene.style?.font_size || '')}" />
+                </div>
+            </div>
+        </div>
         <div class="scene-code-section">
             <button type="button" class="scene-code-toggle" data-expanded="false">Manim Code ▼</button>
             <div class="scene-code-panel hidden">
@@ -1455,6 +1526,18 @@ function addSceneCard(scene = { text: '', animation: '' }, sceneNumber = null, a
             } finally {
                 retryBtn.disabled = false;
             }
+        });
+    }
+
+    // Style overrides toggle
+    const styleToggle = card.querySelector('.scene-style-toggle');
+    const stylePanel = card.querySelector('.scene-style-panel');
+    if (styleToggle && stylePanel) {
+        styleToggle.addEventListener('click', () => {
+            const expanded = styleToggle.dataset.expanded === 'true';
+            styleToggle.dataset.expanded = String(!expanded);
+            stylePanel.classList.toggle('hidden');
+            styleToggle.textContent = expanded ? 'Style Overrides ▼' : 'Style Overrides ▲';
         });
     }
 
@@ -1529,6 +1612,7 @@ function showScriptReview(script, recovered = false) {
     updateGenerateButtonHint();
     scriptReviewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     resetForm();
+    debouncedLintScript();
 }
 
 async function previewSceneOne(sceneIndex = 1) {
@@ -1596,7 +1680,73 @@ if (previewSceneBtn) {
 scriptScenesEl.addEventListener('input', () => {
     syncEditorToTextarea();
     updateGenerateButtonHint();
+    debouncedLintScript();
 });
+
+let lintTimeout = null;
+async function lintScript() {
+    if (!linterPanel || !linterMetrics) return;
+    const script = collectScriptFromEditor();
+    if (!script.length) return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/metrics/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scenes: script, topic: topicInput.value.trim() || importTitleInput.value.trim() || '' }),
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.error) return;
+
+        const retention = data.retention_prediction?.predicted_retention_pct ?? 0;
+        const wpm = data.overall_wpm ?? 0;
+        const wordCount = data.total_words ?? 0;
+        const sceneCount = data.scene_count ?? 0;
+        const readability = data.readability?.flesch_reading_ease ?? 0;
+
+        const retentionClass = retention >= 60 ? 'good' : retention >= 45 ? 'warn' : 'bad';
+        const wpmClass = wpm >= 120 && wpm <= 160 ? 'good' : wpm >= 100 && wpm <= 200 ? 'warn' : 'bad';
+        const readClass = readability >= 60 ? 'good' : readability >= 40 ? 'warn' : 'bad';
+
+        linterMetrics.innerHTML = `
+            <div class="linter-metric">
+                <span class="linter-metric-value ${retentionClass}">${retention}%</span>
+                <span class="linter-metric-label">Retention</span>
+            </div>
+            <div class="linter-metric">
+                <span class="linter-metric-value ${wpmClass}">${Math.round(wpm)}</span>
+                <span class="linter-metric-label">WPM</span>
+            </div>
+            <div class="linter-metric">
+                <span class="linter-metric-value ${readClass}">${Math.round(readability)}</span>
+                <span class="linter-metric-label">Readability</span>
+            </div>
+            <div class="linter-metric">
+                <span class="linter-metric-value">${wordCount}</span>
+                <span class="linter-metric-label">Words</span>
+            </div>
+            <div class="linter-metric">
+                <span class="linter-metric-value">${sceneCount}</span>
+                <span class="linter-metric-label">Scenes</span>
+            </div>
+        `;
+
+        const suggestions = data.suggestions || [];
+        if (suggestions.length) {
+            linterSuggestions.innerHTML = suggestions.slice(0, 3).map(s => `<div class="linter-suggestion">${escapeHtml(s)}</div>`).join('');
+            linterSuggestions.classList.remove('hidden');
+        } else {
+            linterSuggestions.classList.add('hidden');
+        }
+        linterPanel.classList.remove('hidden');
+    } catch (err) {
+        // Silently fail — linter is advisory
+    }
+}
+function debouncedLintScript() {
+    clearTimeout(lintTimeout);
+    lintTimeout = setTimeout(lintScript, 800);
+}
 
 addSceneBtn.addEventListener('click', () => addSceneCard());
 
@@ -1682,6 +1832,85 @@ function resetForm() {
     `;
 }
 
+// Fetch and display quality metrics
+async function fetchAndShowMetrics(jobId) {
+    if (!metricsPanel || !metricsGrid) return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/metrics`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.error) return;
+
+        const retention = data.retention_prediction?.predicted_retention_pct ?? 0;
+        const readability = data.readability?.flesch_reading_ease ?? 0;
+        const wpm = data.overall_wpm ?? 0;
+        const wordCount = data.total_words ?? 0;
+        const sceneCount = data.scene_count ?? 0;
+
+        const retentionClass = retention >= 60 ? 'good' : retention >= 45 ? 'warn' : 'bad';
+        const readabilityClass = readability >= 60 ? 'good' : readability >= 40 ? 'warn' : 'bad';
+        const wpmClass = wpm >= 120 && wpm <= 160 ? 'good' : wpm >= 100 && wpm <= 200 ? 'warn' : 'bad';
+
+        metricsGrid.innerHTML = `
+            <div class="metric-card ${retentionClass}">
+                <div class="metric-value">${retention}%</div>
+                <div class="metric-label">Predicted Retention</div>
+            </div>
+            <div class="metric-card ${readabilityClass}">
+                <div class="metric-value">${Math.round(readability)}</div>
+                <div class="metric-label">Readability Score</div>
+            </div>
+            <div class="metric-card ${wpmClass}">
+                <div class="metric-value">${Math.round(wpm)}</div>
+                <div class="metric-label">Words/Min</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">${wordCount}</div>
+                <div class="metric-label">Total Words</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">${sceneCount}</div>
+                <div class="metric-label">Scenes</div>
+            </div>
+        `;
+
+        const suggestions = data.suggestions || [];
+        if (suggestions.length) {
+            metricsSuggestions.innerHTML = suggestions.map(s => `<div class="suggestion">${escapeHtml(s)}</div>`).join('');
+            metricsSuggestions.classList.remove('hidden');
+        } else {
+            metricsSuggestions.classList.add('hidden');
+        }
+        metricsPanel.classList.remove('hidden');
+    } catch (err) {
+        console.warn('Could not load metrics:', err);
+    }
+}
+
+// Fetch and display thumbnails
+async function fetchAndShowThumbnails(jobId) {
+    if (!thumbnailsPanel || !thumbnailsGrid) return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/thumbnails`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.timeline) {
+            timelineImage.src = data.timeline;
+            timelineImage.classList.remove('hidden');
+        } else {
+            timelineImage.classList.add('hidden');
+        }
+        if (data.thumbnails?.length) {
+            thumbnailsGrid.innerHTML = data.thumbnails.map(url => `
+                <div class="thumb-item"><img src="${escapeHtml(url)}" alt="scene thumbnail" loading="lazy"></div>
+            `).join('');
+            thumbnailsPanel.classList.remove('hidden');
+        }
+    } catch (err) {
+        console.warn('Could not load thumbnails:', err);
+    }
+}
+
 // Show result
 function showResult(videoUrl, options = {}) {
     const isPreview = options.preview;
@@ -1711,6 +1940,15 @@ function showResult(videoUrl, options = {}) {
             } else {
                 htmlPlayerBtn.classList.add('hidden');
             }
+        }
+
+        // Hide metrics/thumbnails on preview, show on full render
+        if (isPreview) {
+            metricsPanel?.classList.add('hidden');
+            thumbnailsPanel?.classList.add('hidden');
+        } else if (currentJobId) {
+            fetchAndShowMetrics(currentJobId);
+            fetchAndShowThumbnails(currentJobId);
         }
 
         resultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

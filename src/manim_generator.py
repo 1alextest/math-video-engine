@@ -20,6 +20,7 @@ def generate_manim_code(
     video_settings=None,
     visual_events=None,
     max_retries=3,
+    scene_style=None,
 ):
     """Generates Manim code using the LLM with style registry, visual events, and retries."""
     from video_settings import normalize_video_settings
@@ -39,6 +40,7 @@ REQUIRED VISUAL EVENTS (implement ALL of these in the animation):
 
     # Build context section if it exists
     context_section = ""
+    snippet_block = previous_context.get("similar_snippets", "") if previous_context else ""
     if previous_context:
         registry_block = previous_context.get("style_registry") or ""
         context_section = f"""
@@ -50,10 +52,12 @@ PREVIOUS SCENE CONTEXT (maintain continuity):
 ```python
 {previous_context.get('code', 'N/A')}
 ```
+{snippet_block}
 """
     else:
-        context_section = """
+        context_section = f"""
 CONTEXT: This is the FIRST scene of the video.
+{snippet_block}
 """
 
     # Add audio duration information if available
@@ -66,28 +70,57 @@ CRITICAL AUDIO SYNCHRONIZATION:
 - TIMING STRATEGY (beat-based, not naive division):
   1. Read the narration text carefully. Identify the KEY BEATS (moments where a new concept, term, or visual element is introduced).
   2. Time each animation so the visual element appears AT or JUST BEFORE its corresponding narrative beat — NOT spread evenly.
-  3. Use self.wait() at NATURAL PAUSES in the narration (after a key reveal, before a transition) — never as filler.
+  3. Use self.wait() at NATURAL PAUSES in the narration (after a key reveal, before a transition).
   4. Important reveals should use run_time=1.5-2.5s so the viewer can absorb them.
-  5. Quick transitions between related elements should use run_time=0.5-1.0s.
+  5. Quick transitions between related elements should use run_time=0.6-1.0s.
   6. The total of all animation run_times + wait times MUST equal {audio_duration:.2f}s.
+  7. BREATHING ROOM IS MANDATORY: after every key visual reveal, add self.wait(1.0). After the aha moment, self.wait(2.0).
 - Example timing for a 10s narration with 3 beats:
   * Beat 1 (0s): "The derivative tells us the slope" -> Show title + equation (run_time=2s)
+  * Wait 1.0s
   * Beat 2 (3.5s): "At this point, the slope is zero" -> Highlight the point (run_time=1.5s)
+  * Wait 1.0s
   * Beat 3 (6s): "So we have a maximum" -> Show result label (run_time=1.5s)
-  * Wait 1s at the end for the viewer to absorb
+  * Wait 2.0s at the end for the viewer to absorb
 """
     else:
         duration_section = f"""
 TIMING GUIDANCE:
 - This scene should last approximately {scene_duration} seconds
 - Use beat-based timing: match animation moments to narrative beats
-- Important reveals: run_time=1.5-2.5s; quick transitions: run_time=0.5-1.0s
-- Minimize use of self.wait() (maximum 0.5-1 second) unless at a natural pause
+- Important reveals: run_time=1.5-2.5s; quick transitions: run_time=0.6-1.0s
+- BREATHING ROOM IS MANDATORY: after every key visual reveal, add self.wait(1.0). After the aha moment, self.wait(2.0).
 - Total animation time should match ~{scene_duration}s
 """
 
     quality_guidance = video_settings.get("quality_preset", {}).get("prompt_guidance", "")
     quality_block = f"\nQUALITY GUIDANCE:\n{quality_guidance}\n" if quality_guidance else ""
+
+    # Scene style overrides
+    style_override_section = ""
+    if scene_style:
+        palette = scene_style.get("palette")
+        speed = scene_style.get("speed")
+        font_size = scene_style.get("font_size")
+        overrides = []
+        if palette == "warm":
+            overrides.append("Use a WARM palette: #FF6B6B (coral), #FFD93D (yellow), #F4A261 (orange), #E76F51 (terracotta). Background stays #1a1a2e.")
+        elif palette == "cool":
+            overrides.append("Use a COOL palette: #58C4DD (cyan), #4ECDC4 (teal), #45B7D1 (sky), #96CEB4 (sage). Background stays #1a1a2e.")
+        elif palette == "monochrome":
+            overrides.append("Use a MONOCHROME palette: #E2E8F0 (white), #94A3B8 (light gray), #475569 (medium gray), #1E293B (dark gray). Background stays #1a1a2e.")
+        elif palette == "vibrant":
+            overrides.append("Use a VIBRANT high-contrast palette: #FF006E (magenta), #FB5607 (orange), #8338EC (purple), #06FFB4 (neon green). Background stays #1a1a2e.")
+        elif palette == "pastel":
+            overrides.append("Use a PASTEL palette: #FFB3BA (pink), #FFDFBA (peach), #FFFFBA (lemon), #BAFFC9 (mint), #BAE1FF (baby blue). Background stays #1a1a2e.")
+        if speed == "slow":
+            overrides.append("ANIMATION SPEED: Use 2× longer run_time values. Reveals: 3.0-4.0s. Transitions: 1.0-1.5s. Add extra self.wait(1.5) after key moments.")
+        elif speed == "fast":
+            overrides.append("ANIMATION SPEED: Use 0.5× shorter run_time values. Reveals: 0.8-1.2s. Transitions: 0.3-0.5s. Keep waits minimal (0.5s).")
+        if font_size:
+            overrides.append(f"FONT SIZE OVERRIDE: Base all text sizes around {font_size}px. Titles: {font_size + 12}px, Headers: {font_size + 6}px, Body: {font_size}px, Labels: {font_size - 6}px.")
+        if overrides:
+            style_override_section = "\nSCENE STYLE OVERRIDES (apply these to THIS scene only):\n" + "\n".join(f"- {o}" for o in overrides) + "\n"
 
     style_section = f"""
 VISUAL STYLE GUIDE (maintain consistency with other scenes):
@@ -95,6 +128,45 @@ VISUAL STYLE GUIDE (maintain consistency with other scenes):
 - Use self.camera.background_color = "#1a1a2e" at the start of construct()
 - Match fonts, colors, and layout from previous scenes when context is provided
 {quality_block}
+{style_override_section}
+
+COLOR PALETTE SYSTEM (use ONLY these 4-5 colors per video):
+- Background: "#1a1a2e" (very dark blue-purple)
+- Primary:    "#58C4DD" (3Blue1Blue cyan) or "#6366f1" (indigo)
+- Secondary:  "#83C167" (green) or "#FFD93D" (warm yellow)
+- Accent:     "#FFFF00" (yellow) or "#FF6B6B" (coral)
+- Text:       "#E2E8F0" (soft white)
+- NEVER use more than 5 distinct colors in one scene
+- NEVER use raw RED/GREEN/BLUE as primary element colors (use the palette hexes above)
+
+OPACITY & VISUAL SALIENCE (direct the viewer's eye):
+- PRIMARY element (the thing being explained): opacity 1.0, full brightness
+- SECONDARY elements (supporting labels, context): opacity 0.5-0.7
+- STRUCTURAL elements (axes, grids, backgrounds): opacity 0.15-0.25
+- Example: axis lines at 0.2, the curve at 1.0, annotations at 0.6
+
+TYPOGRAPHY HIERARCHY (consistent sizing):
+- Scene title: font_size=48, weight=BOLD
+- Section header: font_size=36
+- Body explanation: font_size=30
+- Label/annotation: font_size=24
+- Minimum readable size: font_size=20
+- Use monospace font when possible: Text("...", font="Monospace")
+
+BREATHING ROOM (critical for comprehension):
+- After EVERY key reveal: self.wait(1.0) minimum
+- After an "aha" equation or transformation: self.wait(2.0)
+- After scene title appears: self.wait(1.5)
+- Never chain animations without a pause between concepts
+- The viewer needs time to absorb; pauses are NEVER wasted
+
+EASING & MOTION (make it feel alive, not robotic):
+- Default: rate_func=smooth for ALL movements and fades
+- Mechanical processes only: rate_func=linear
+- Playful emphasis: rate_func=rate_functions.ease_out_bounce (rarely)
+- Important reveals: run_time=2.0-2.5s
+- Quick transitions: run_time=0.6-1.0s
+- Text writes: run_time=1.5-2.0s
 """
 
     prompt = f"""{context_section}

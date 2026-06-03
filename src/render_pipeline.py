@@ -16,6 +16,7 @@ from frame_critic import (
 from json_utils import extract_json_from_llm_response
 from llm_chat import complete_llm
 from manim_generator import fix_manim_code, generate_manim_code
+from vector_snippets import search_snippets_by_text, format_snippets_for_prompt
 from style_registry import create_style_registry, format_registry_for_prompt, update_style_registry
 from visual_events import enrich_scene_events, format_events_for_prompt
 
@@ -235,9 +236,22 @@ def generate_scene_code(
     registry_prompt = format_registry_for_prompt(style_registry)
     events_prompt = format_events_for_prompt(scene_data.get("visual_events"))
 
+    # Search for similar code snippets
+    snippet_context = ""
+    try:
+        query = f"{scene_data.get('text', '')}\n{scene_data.get('animation', '')}"
+        similar = search_snippets_by_text(query, llm_client, provider, model, top_k=2)
+        if similar:
+            snippet_context = format_snippets_for_prompt(similar)
+            print(f"[Scene {index}] Found {len(similar)} similar snippet(s)")
+    except Exception as exc:
+        print(f"[WARN] Snippet search failed: {exc}")
+
     enriched_context = dict(previous_context or {})
     enriched_context["style_registry"] = registry_prompt
     enriched_context["visual_events"] = events_prompt
+    if snippet_context:
+        enriched_context["similar_snippets"] = snippet_context
 
     return generate_manim_code(
         llm_client,
@@ -250,6 +264,7 @@ def generate_scene_code(
         audio_duration=audio_duration,
         video_settings=video_settings,
         visual_events=scene_data.get("visual_events"),
+        scene_style=scene_data.get("style"),
     )
 
 

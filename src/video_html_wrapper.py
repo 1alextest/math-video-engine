@@ -42,6 +42,7 @@ def generate_video_html(
     title_duration: float = 0.0,
     end_duration: float = 0.0,
     scene_video_paths: Optional[List[str]] = None,
+    chapters: Optional[List[dict]] = None,
 ) -> str:
     """Generate an interactive HTML player for the video.
 
@@ -53,6 +54,8 @@ def generate_video_html(
         title_duration: Duration of title card (offset for first scene).
         end_duration: Duration of end screen (not a chapter).
         scene_video_paths: Optional list of per-scene MP4 paths to compute exact durations.
+        chapters: Optional pre-computed chapters list [{title, scenes: [...]}].
+            If provided, overrides per-scene chapter building.
 
     Returns:
         Path to the written HTML file.
@@ -62,24 +65,49 @@ def generate_video_html(
     scene_video_paths = scene_video_paths or []
 
     # Build chapter list from actual scene durations when available
-    chapters = []
-    current_time = title_duration
-    for idx, scene in enumerate(scenes, 1):
-        scene_title = scene.get("title") or scene.get("chapter") or f"Scene {idx}"
-        scene_text = scene.get("narration") or scene.get("text", "")
-        chapters.append(
-            {
-                "label": html.escape(scene_title),
-                "text": html.escape(scene_text),
-                "time": round(current_time, 2),
-            }
-        )
-        if idx - 1 < len(scene_video_paths):
-            current_time += _scene_duration_seconds(scene_video_paths[idx - 1])
-        else:
-            current_time += 8.0  # fallback approximate duration
+    chapter_list = []
+    if chapters:
+        # Use pre-computed chapter groupings
+        current_time = title_duration
+        for ch in chapters:
+            ch_scenes = ch.get("scenes", [])
+            ch_texts = []
+            for si in ch_scenes:
+                if 0 <= si < len(scenes):
+                    txt = scenes[si].get("narration") or scenes[si].get("text", "")
+                    if txt:
+                        ch_texts.append(txt)
+            chapter_list.append(
+                {
+                    "label": html.escape(ch.get("title", "Chapter")),
+                    "text": html.escape(" ".join(ch_texts)[:200]),
+                    "time": round(current_time, 2),
+                }
+            )
+            # Advance time by chapter scene durations
+            for si in ch_scenes:
+                if si < len(scene_video_paths):
+                    current_time += _scene_duration_seconds(scene_video_paths[si])
+                else:
+                    current_time += 8.0
+    else:
+        current_time = title_duration
+        for idx, scene in enumerate(scenes, 1):
+            scene_title = scene.get("title") or scene.get("chapter") or f"Scene {idx}"
+            scene_text = scene.get("narration") or scene.get("text", "")
+            chapter_list.append(
+                {
+                    "label": html.escape(scene_title),
+                    "text": html.escape(scene_text),
+                    "time": round(current_time, 2),
+                }
+            )
+            if idx - 1 < len(scene_video_paths):
+                current_time += _scene_duration_seconds(scene_video_paths[idx - 1])
+            else:
+                current_time += 8.0  # fallback approximate duration
 
-    chapters_json = str(chapters).replace("'", '"')
+    chapters_json = str(chapter_list).replace("'", '"')
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
